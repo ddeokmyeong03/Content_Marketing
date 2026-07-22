@@ -1,0 +1,29 @@
+이번 주 콘텐츠 캘린더를 기획해 주세요.
+
+**기간**: {{ week_start }} (월) ~ {{ week_end }} (일)
+**인스타그램 목표**: 주 {{ instagram_freq }}회
+**쓰레드 목표**: 주 {{ threads_freq }}회
+
+{% if recent_topics %}
+## 최근 4주 다룬 주제 (중복 금지)
+{% for t in recent_topics %}
+- {{ t }}
+{% endfor %}
+{% endif %}
+
+## 콘텐츠 기둥 비중
+{% for pillar in pillars %}
+- {{ pillar.name_ko }} ({{ pillar.id }}): {{ (pillar.weight * 100) | int }}%
+{% endfor %}
+
+## 기획 요구사항
+
+1. **주간 테마**: 이번 주 전체를 관통하는 하나의 큰 테마를 정하세요.
+2. **주제 배분**: 각 콘텐츠 기둥의 비중에 맞게 주제를 배분하세요.
+3. **스토리 흐름**: 가능하면 이번 주 포스트들이 하나의 이야기 흐름을 가지게 하세요.
+4. **플랫폼 차별화**:
+   - Instagram: 시각적으로 표현하기 좋은 정보성 주제
+   - Threads: 짧은 인사이트, 질문, 생각 공유에 적합한 주제
+5. **발행 순서**: day_offset (0=월요일, 6=일요일)으로 배치하세요.
+
+총 {{ total_posts }}개의 주제를 JSON 형식으로 반환하세요.

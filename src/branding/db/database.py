@@ -1,0 +1,69 @@
+import json
+from pathlib import Path
+from datetime import datetime
+import sqlite3
+
+CREATE_TABLES_SQL = """
+CREATE TABLE IF NOT EXISTS content_plans (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    week_start   DATE NOT NULL,
+    week_end     DATE NOT NULL,
+    theme        TEXT NOT NULL,
+    theme_ko     TEXT NOT NULL,
+    topics_json  TEXT NOT NULL,
+    generated_at DATETIME NOT NULL,
+    status       TEXT DEFAULT 'active'
+);
+
+CREATE TABLE IF NOT EXISTS posts (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id        INTEGER REFERENCES content_plans(id),
+    platform       TEXT NOT NULL,
+    media_type     TEXT NOT NULL,
+    content_pillar TEXT NOT NULL,
+    topic          TEXT NOT NULL,
+    content_json   TEXT NOT NULL,
+    status         TEXT DEFAULT 'draft',
+    scheduled_at   DATETIME,
+    published_at   DATETIME,
+    meta_post_id   TEXT,
+    permalink      TEXT,
+    week_number    INTEGER NOT NULL,
+    created_at     DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS token_store (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform      TEXT NOT NULL UNIQUE,
+    access_token  TEXT NOT NULL,
+    token_type    TEXT NOT NULL DEFAULT 'long_lived',
+    expires_at    DATETIME,
+    updated_at    DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS publish_log (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id       INTEGER REFERENCES posts(id),
+    attempt_at    DATETIME NOT NULL,
+    success       INTEGER NOT NULL,
+    error_msg     TEXT,
+    response_json TEXT
+);
+"""
+
+
+def get_connection(db_path: str | Path) -> sqlite3.Connection:
+    db_path = Path(db_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
+def init_db(db_path: str | Path) -> None:
+    conn = get_connection(db_path)
+    conn.executescript(CREATE_TABLES_SQL)
+    conn.commit()
+    conn.close()

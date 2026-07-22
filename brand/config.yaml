@@ -1,0 +1,131 @@
+# ============================================================
+# 브랜드 정체성 설정 파일
+# 이 파일이 모든 AI 콘텐츠 생성의 기준이 됩니다.
+# ============================================================
+
+persona:
+  name: ""                          # 본명 또는 브랜드명 입력
+  profession: "창업가 & 비즈니스 자동화 전문가"
+  tagline_ko: "더 적게 일하고, 더 많이 성장하는 창업의 현실"
+  tagline_en: "Work less. Grow more. The reality of entrepreneurship."
+  bio_ko: |
+    창업의 날 것을 기록합니다.
+    자동화, 시스템, 그리고 진짜 비즈니스 성장 이야기.
+    화려한 성공 스토리 말고, 실제로 작동하는 것들을 공유합니다.
+  bio_en: |
+    Documenting the raw reality of entrepreneurship.
+    Automation, systems, and real business growth stories.
+    Not the highlight reel — the stuff that actually works.
+
+tone_of_voice:
+  primary: "솔직하고 실용적인 (honest & practical)"
+  secondary:
+    - "간결하고 핵심을 찌르는"
+    - "경험에서 나온 인사이트"
+    - "공감하되 자극하는"
+  avoid:
+    - "과도한 자기 홍보"
+    - "근거 없는 동기부여"
+    - "전문 용어 남발"
+    - "감탄사 과용 (와! 대박! 등)"
+  korean_register: "해요체"     # 해요체 사용 (존댓말이지만 편안한 톤)
+  emoji_usage: "minimal"         # 이모지 최소화 (1-2개/포스트)
+
+content_pillars:
+  - id: "startup_reality"
+    name_ko: "창업 현실"
+    name_en: "Startup Reality"
+    description_ko: "창업의 실제 현장 — 실패, 배움, 아무도 말 안 해주는 현실"
+    weight: 0.35
+    examples:
+      - "처음 6개월 동안 제가 틀렸던 것들"
+      - "직장 vs 창업, 실제로 비교해보니"
+      - "월 매출 0원에서 배운 것"
+
+  - id: "automation_tips"
+    name_ko: "자동화 & 생산성"
+    name_en: "Automation & Productivity"
+    description_ko: "시간을 되찾는 자동화 도구, 시스템, 워크플로우"
+    weight: 0.25
+    examples:
+      - "하루 2시간을 아껴주는 자동화 셋업"
+      - "혼자서 팀처럼 일하는 법"
+      - "AI로 대체한 반복 업무 목록"
+
+  - id: "business_growth"
+    name_ko: "비즈니스 성장 전략"
+    name_en: "Business Growth"
+    description_ko: "실제로 작동한 마케팅, 영업, 고객 확보 전략"
+    weight: 0.25
+    examples:
+      - "광고 없이 첫 100명 고객 만든 방법"
+      - "가격 책정에서 계속 틀렸던 이유"
+      - "리텐션이 신규보다 왜 중요한가"
+
+  - id: "mindset"
+    name_ko: "마인드셋 & 인사이트"
+    name_en: "Mindset & Insights"
+    description_ko: "창업가로서의 성찰, 철학, 롱게임 관점"
+    weight: 0.15
+    examples:
+      - "번아웃 직전에 깨달은 것"
+      - "빠름보다 방향이 중요한 이유"
+      - "비교는 왜 항상 틀리는가"
+
+visual_aesthetic:
+  style: "미니멀하고 텍스트 중심, 다크 또는 뉴트럴 톤"
+  color_palette:
+    - "#0A0A0A"    # 딥 블랙 (배경)
+    - "#FFFFFF"    # 화이트 (텍스트)
+    - "#F5F0E8"    # 크림 (액센트)
+    - "#1A1A1A"    # 다크 그레이
+  font_preference: "고딕 계열 산세리프 (본고딕, Noto Sans KR)"
+  image_style: "텍스트 카드 또는 미니멀 그래픽 중심, 인물 사진 최소화"
+
+posting_schedule:
+  instagram:
+    frequency: 4          # 주 4회 (월/화/목/토)
+    preferred_times:
+      - "09:00"
+      - "18:00"
+      - "21:00"
+    timezone: "Asia/Seoul"
+    media_mix:
+      carousel: 0.5       # 50% 카루셀 (정보성 콘텐츠)
+      single_image: 0.3   # 30% 단일 이미지 (명언/인사이트)
+      reel: 0.2           # 20% 릴스 (선택적)
+
+  threads:
+    frequency: 7          # 주 7회 (매일)
+    preferred_times:
+      - "08:00"
+      - "12:00"
+      - "19:00"
+      - "22:00"
+    timezone: "Asia/Seoul"
+    style: "짧고 임팩트 있는 텍스트 (300자 이내 권장)"
+
+language:
+  primary: "ko"
+  secondary: "en"
+  bilingual: true         # 한국어 본문 + 영어 번역 병기
+
+hashtag_strategy:
+  instagram:
+    total: 15
+    mix:
+      niche_ko: 6         # 한국어 니치 해시태그
+      niche_en: 4         # 영어 니치 해시태그
+      broad: 3            # 광범위 태그
+      brand: 2            # 브랜드 고유 태그
+    brand_tags:
+      - "#창업일기"
+      - "#자동화창업"    # 나중에 본인 브랜드 태그로 변경
+  threads:
+    total: 5
+    style: "conversational"
+
+automation:
+  auto_approve: false       # false: 검토 후 발행 / true: 완전 자동
+  review_reminder_hour: 8   # 매일 오전 8시 검토 알림
+  min_review_hours: 2       # 발행 최소 2시간 전 승인 필요
