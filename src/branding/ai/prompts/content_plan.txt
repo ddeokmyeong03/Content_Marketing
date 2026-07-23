@@ -10,6 +10,13 @@
 - {{ t }}
 {% endfor %}
 {% endif %}
+{% if top_performers %}
+## 최근 성과가 좋았던 콘텐츠 (참여율 학습 데이터)
+아래는 실제로 반응이 좋았던 주제/훅입니다. 이 각도·패턴을 참고해 유사한 결을 늘리되, 똑같이 반복하지는 마세요.
+{% for p in top_performers %}
+- [{{ p.pillar }}] {{ p.topic }}{% if p.chosen_hook %} — 훅: "{{ p.chosen_hook }}"{% endif %} (참여율 {{ p.engagement_rate }})
+{% endfor %}
+{% endif %}
 
 ## 콘텐츠 기둥 비중
 {% for pillar in pillars %}

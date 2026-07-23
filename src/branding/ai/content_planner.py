@@ -51,6 +51,7 @@ def generate_weekly_plan(
     api_key: str,
     week_start: Optional[date] = None,
     recent_topics: Optional[list[str]] = None,
+    top_performers: Optional[list[dict]] = None,
     model: str = "claude-opus-4-8",
 ) -> ContentPlan:
     if week_start is None:
@@ -72,6 +73,7 @@ def generate_weekly_plan(
         threads_freq=brand_config.posting_schedule.threads.frequency,
         pillars=brand_config.content_pillars,
         recent_topics=recent_topics or [],
+        top_performers=top_performers or [],
         total_posts=total_posts,
     )
 

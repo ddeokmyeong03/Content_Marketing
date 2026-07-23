@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     weekly_plan_cron_day: str = "sun"    # 주간 계획 생성 요일
     weekly_plan_cron_hour: int = 18      # 주간 계획 생성 시각 (로컬)
     token_refresh_hour: int = 3          # 토큰 갱신 점검 시각 (로컬, 매일)
+    insights_sync_hour: int = 4          # 성과 인사이트 수집 시각 (로컬, 매일)
     scheduler_timezone: str = "Asia/Seoul"
 
     # 토큰 자동 갱신

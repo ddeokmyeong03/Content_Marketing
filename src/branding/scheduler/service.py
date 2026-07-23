@@ -19,6 +19,7 @@ from ..auth import TokenRefresher
 from ..config import get_settings, load_brand_config
 from ..config.settings import Settings
 from ..db import PostRepository, init_db
+from ..insights import InsightsService
 from ..models import PostStatus
 from ..notify import get_notifier
 from ..publisher import PublishService
@@ -75,6 +76,14 @@ def _token_refresh_job(settings: Settings) -> None:
         logger.exception("토큰 갱신 잡 실행 중 오류")
 
 
+def _insights_sync_job(settings: Settings) -> None:
+    try:
+        collected = InsightsService(settings).sync()
+        logger.info("인사이트 수집: %d개", len(collected))
+    except Exception:
+        logger.exception("인사이트 수집 잡 실행 중 오류")
+
+
 def build_scheduler(settings: Settings | None = None) -> BlockingScheduler:
     settings = settings or get_settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
@@ -109,6 +118,15 @@ def build_scheduler(settings: Settings | None = None) -> BlockingScheduler:
         trigger=CronTrigger(hour=settings.token_refresh_hour, minute=0),
         args=[settings],
         id="token-refresh",
+        max_instances=1,
+        coalesce=True,
+    )
+
+    scheduler.add_job(
+        _insights_sync_job,
+        trigger=CronTrigger(hour=settings.insights_sync_hour, minute=0),
+        args=[settings],
+        id="insights-sync",
         max_instances=1,
         coalesce=True,
     )

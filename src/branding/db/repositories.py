@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Optional
 import sqlite3
 
-from ..models import Post, ContentPlan, ContentPlanTopic, PostStatus, PostContent
+from ..models import Post, ContentPlan, ContentPlanTopic, PostStatus, PostContent, PostMetric
+from ..models.enums import Platform as _Platform
 from ..models.enums import Platform, MediaType, ContentPillar
 from ..utils.time import now_utc, parse_dt
 from .database import get_connection
@@ -45,8 +46,9 @@ class PostRepository:
             cur = conn.execute(
                 """INSERT INTO posts
                    (plan_id, platform, media_type, content_pillar, topic,
-                    content_json, status, scheduled_at, week_number, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    content_json, status, scheduled_at, published_at, meta_post_id,
+                    permalink, week_number, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     post.plan_id,
                     post.platform.value,
@@ -56,6 +58,9 @@ class PostRepository:
                     content_json,
                     post.status.value,
                     post.scheduled_at.isoformat() if post.scheduled_at else None,
+                    post.published_at.isoformat() if post.published_at else None,
+                    post.meta_post_id,
+                    post.permalink,
                     post.week_number,
                     post.created_at.isoformat(),
                 ),
@@ -250,3 +255,111 @@ class TokenRepository:
         ).fetchone()
         conn.close()
         return parse_dt(row["expires_at"]) if row and row["expires_at"] else None
+
+
+_METRIC_COLUMNS = {"engagement_rate", "saved", "likes", "comments", "shares", "reach", "views"}
+# config의 primary_metric 값 → post_metrics 컬럼 매핑
+_METRIC_ALIAS = {"saves": "saved", "follows": "engagement_rate"}
+
+
+class MetricsRepository:
+    """발행 성과(post_metrics) 저장 및 상위 성과 조회 — 피드백 루프의 저장소."""
+
+    def __init__(self, db_path: str | Path):
+        self.db_path = db_path
+
+    def _conn(self) -> sqlite3.Connection:
+        return get_connection(self.db_path)
+
+    def save_snapshot(self, metric: PostMetric) -> None:
+        conn = self._conn()
+        conn.execute(
+            """INSERT INTO post_metrics
+               (post_id, platform, fetched_at, likes, comments, shares, saved,
+                reach, views, engagement_rate, raw_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                metric.post_id,
+                metric.platform.value,
+                metric.fetched_at.isoformat(),
+                metric.likes,
+                metric.comments,
+                metric.shares,
+                metric.saved,
+                metric.reach,
+                metric.views,
+                metric.engagement_rate,
+                json.dumps(metric.raw) if metric.raw else None,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+    def latest_for_post(self, post_id: int) -> Optional[PostMetric]:
+        conn = self._conn()
+        row = conn.execute(
+            "SELECT * FROM post_metrics WHERE post_id=? ORDER BY fetched_at DESC LIMIT 1",
+            (post_id,),
+        ).fetchone()
+        conn.close()
+        if not row:
+            return None
+        return PostMetric(
+            post_id=row["post_id"],
+            platform=_Platform(row["platform"]),
+            likes=row["likes"],
+            comments=row["comments"],
+            shares=row["shares"],
+            saved=row["saved"],
+            reach=row["reach"],
+            views=row["views"],
+            engagement_rate=row["engagement_rate"],
+            fetched_at=parse_dt(row["fetched_at"]),
+            raw=json.loads(row["raw_json"]) if row["raw_json"] else {},
+        )
+
+    def top_performers(
+        self, weeks: int = 8, limit: int = 10, order_by: str = "engagement_rate"
+    ) -> list[dict]:
+        """최근 N주 발행분 중, 각 게시물의 최신 스냅샷 기준 상위 성과.
+
+        기획 프롬프트에 '무엇이 먹혔는지' 재주입하기 위한 학습 데이터.
+        반환: [{topic, pillar, chosen_hook, engagement_rate, value}]
+        """
+        order_by = _METRIC_ALIAS.get(order_by, order_by)
+        order_col = order_by if order_by in _METRIC_COLUMNS else "engagement_rate"
+        since = (now_utc() - timedelta(weeks=weeks)).isoformat()
+        conn = self._conn()
+        rows = conn.execute(
+            f"""SELECT p.topic AS topic, p.content_pillar AS pillar,
+                       p.content_json AS content_json, m.engagement_rate AS er,
+                       m.{order_col} AS val
+                FROM post_metrics m
+                JOIN posts p ON p.id = m.post_id
+                JOIN (SELECT post_id, MAX(fetched_at) AS mx
+                      FROM post_metrics GROUP BY post_id) latest
+                  ON latest.post_id = m.post_id AND latest.mx = m.fetched_at
+                WHERE m.fetched_at >= ?
+                ORDER BY m.{order_col} DESC
+                LIMIT ?""",
+            (since, limit),
+        ).fetchall()
+        conn.close()
+
+        results = []
+        for r in rows:
+            chosen_hook = None
+            try:
+                chosen_hook = json.loads(r["content_json"]).get("chosen_hook")
+            except (ValueError, TypeError):
+                pass
+            results.append(
+                {
+                    "topic": r["topic"],
+                    "pillar": r["pillar"],
+                    "chosen_hook": chosen_hook,
+                    "engagement_rate": r["er"],
+                    "value": r["val"],
+                }
+            )
+        return results

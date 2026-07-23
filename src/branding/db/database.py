@@ -49,6 +49,21 @@ CREATE TABLE IF NOT EXISTS publish_log (
     error_msg     TEXT,
     response_json TEXT
 );
+
+CREATE TABLE IF NOT EXISTS post_metrics (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id         INTEGER REFERENCES posts(id),
+    platform        TEXT NOT NULL,
+    fetched_at      DATETIME NOT NULL,
+    likes           INTEGER DEFAULT 0,
+    comments        INTEGER DEFAULT 0,
+    shares          INTEGER DEFAULT 0,
+    saved           INTEGER DEFAULT 0,
+    reach           INTEGER DEFAULT 0,
+    views           INTEGER DEFAULT 0,
+    engagement_rate REAL DEFAULT 0,
+    raw_json        TEXT
+);
 """
 
 

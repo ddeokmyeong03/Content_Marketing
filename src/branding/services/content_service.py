@@ -15,7 +15,7 @@ from typing import Callable, Optional
 from ..ai import generate_caption, generate_optimized_caption, generate_weekly_plan
 from ..config.brand_config import BrandConfig
 from ..config.settings import Settings
-from ..db import PlanRepository, PostRepository, init_db
+from ..db import MetricsRepository, PlanRepository, PostRepository, init_db
 from ..models import ContentPlan, Post, PostStatus
 from ..models.enums import Platform
 from ..utils.time import local_datetime, to_utc
@@ -61,11 +61,16 @@ def generate_week(
     post_repo = PostRepository(settings.db_path)
 
     recent = post_repo.recent_topics(weeks=4)
+    metrics_repo = MetricsRepository(settings.db_path)
+    top = metrics_repo.top_performers(
+        weeks=8, limit=8, order_by=brand.engagement.primary_metric
+    )
     plan = generate_weekly_plan(
         brand_config=brand,
         api_key=settings.anthropic_api_key,
         week_start=week_start,
         recent_topics=recent,
+        top_performers=top,
         model=settings.anthropic_model,
     )
     saved_plan = plan_repo.save(plan)

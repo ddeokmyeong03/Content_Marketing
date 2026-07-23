@@ -29,8 +29,10 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 | `branding post now <id>` | 특정 게시물 즉시 발행 |
 | `branding token set -p threads -t <TOKEN>` | 액세스 토큰 저장(.env보다 우선) |
 | `branding token refresh [--force]` | 만료 임박 롱리브드 토큰 갱신 |
+| `branding insights sync` | 발행 게시물 실제 성과 수집 |
+| `branding insights top` | 참여율 상위 성과 콘텐츠 확인 |
 | `branding serve publish-once` | 예약 지난 승인 게시물 1회 발행 |
-| `branding serve run` | 스케줄러 데몬 (발행/주간생성/토큰갱신/검토알림) |
+| `branding serve run` | 스케줄러 데몬 (발행/주간생성/토큰갱신/성과수집/검토알림) |
 
 ## 스케줄러 잡
 
@@ -55,6 +57,7 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 - **지표 정렬 CTA** — `engagement.primary_metric`(saves/comments/shares/follows)에 맞춰 훅·CTA 전략 자동 조정
 - **훅 엔지니어링** — 서로 다른 기법의 훅 N개 생성 + 자기예측 점수로 최적 훅 채택
 - **자기평가·개선 루프** — 생성 후 루브릭으로 참여 점수를 매기고, `min_hook_score` 미만이면 평가를 반영해 1회 자동 재생성 (`generate_optimized_caption`)
+- **성과 측정 → 피드백 루프** — 발행 후 IG/Threads 실제 지표(저장·댓글·공유·도달)를 수집(`insights sync`)하고, 상위 성과 주제/훅을 **다음 주 기획에 재주입**(`MetricsRepository.top_performers` → 기획 프롬프트). 예측 → 측정 → 학습이 순환합니다.
 
 > 니치·청중·심리 레버·목표 지표·설득 강도는 모두 `brand/config.yaml`에서 **코드 수정 없이** 조정합니다.
 

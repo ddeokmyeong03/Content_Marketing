@@ -69,6 +69,27 @@ class Post(BaseModel):
         return "\n".join(parts)
 
 
+class PostMetric(BaseModel):
+    """발행된 게시물의 실제 성과 스냅샷 (Graph API 인사이트)."""
+    post_id: int
+    platform: Platform
+    likes: int = 0
+    comments: int = 0
+    shares: int = 0
+    saved: int = 0
+    reach: int = 0
+    views: int = 0
+    engagement_rate: float = 0.0
+    fetched_at: datetime = Field(default_factory=now_utc)
+    raw: dict = Field(default_factory=dict)
+
+    def compute_engagement_rate(self) -> float:
+        """(좋아요+댓글+공유+저장) / 도달. 도달 없으면 조회수로 대체."""
+        interactions = self.likes + self.comments + self.shares + self.saved
+        denom = self.reach or self.views
+        return round(interactions / denom, 4) if denom else 0.0
+
+
 class ContentPlanTopic(BaseModel):
     pillar: ContentPillar
     topic: str
