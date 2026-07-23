@@ -51,6 +51,7 @@ def generate_weekly_plan(
     api_key: str,
     week_start: Optional[date] = None,
     recent_topics: Optional[list[str]] = None,
+    model: str = "claude-opus-4-8",
 ) -> ContentPlan:
     if week_start is None:
         today = date.today()
@@ -76,7 +77,7 @@ def generate_weekly_plan(
 
     client = get_client(api_key)
     response = client.messages.create(
-        model="claude-opus-4-6",
+        model=model,
         max_tokens=2048,
         system=[make_cached_system_block(brand_config)],
         tools=[PLAN_TOOL],

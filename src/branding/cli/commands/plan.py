@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date
 from typing import Optional
 import typer
 from rich.console import Console
@@ -7,9 +7,8 @@ from rich.panel import Panel
 from rich import box
 
 from ...config import load_brand_config, get_settings
-from ...models import Post, PostStatus
-from ...db import init_db, PostRepository, PlanRepository
-from ...ai import generate_caption, generate_weekly_plan
+from ...db import init_db, PlanRepository
+from ...services import generate_week
 
 app = typer.Typer(help="주간 콘텐츠 계획 관리")
 console = Console()
@@ -44,23 +43,24 @@ def generate_plan(
             console.print("[red]날짜 형식 오류. YYYY-MM-DD 형식으로 입력하세요.[/red]")
             raise typer.Exit(1)
 
-    with console.status("[bold green]주간 콘텐츠 계획을 생성하고 있습니다...[/bold green]"):
-        plan = generate_weekly_plan(
-            brand_config=brand,
-            api_key=settings.anthropic_api_key,
+    status_msg = (
+        "[bold green]주간 계획 + 캡션을 생성하고 있습니다...[/bold green]"
+        if captions
+        else "[bold green]주간 콘텐츠 계획을 생성하고 있습니다...[/bold green]"
+    )
+    with console.status(status_msg):
+        result = generate_week(
+            settings=settings,
+            brand=brand,
             week_start=start_date,
+            with_captions=captions,
         )
-
-    settings.data_dir.mkdir(parents=True, exist_ok=True)
-    init_db(settings.db_path)
-    plan_repo = PlanRepository(settings.db_path)
-    post_repo = PostRepository(settings.db_path)
-    saved_plan = plan_repo.save(plan)
+    plan = result.plan
 
     console.print(Panel(
         f"[bold]{plan.theme_ko}[/bold]\n[dim]{plan.theme}[/dim]\n\n"
         f"{plan.week_start.strftime('%Y년 %m월 %d일')} ~ {plan.week_end.strftime('%m월 %d일')}",
-        title=f"이번 주 테마 (계획 ID: {saved_plan.id})",
+        title=f"이번 주 테마 (계획 ID: {plan.id})",
         border_style="blue",
     ))
 
@@ -82,51 +82,15 @@ def generate_plan(
     console.print(table)
 
     if captions:
-        console.print("\n[bold]캡션 생성 중...[/bold]")
-        week_number = plan.week_start.isocalendar().week
-        for i, topic in enumerate(plan.topics, 1):
-            with console.status(f"  [{i}/{len(plan.topics)}] {topic.topic}"):
-                content = generate_caption(
-                    brand_config=brand,
-                    api_key=settings.anthropic_api_key,
-                    topic=topic.topic,
-                    pillar=topic.pillar,
-                    platform=topic.platform,
-                    media_type=topic.media_type,
-                    week_theme=plan.theme_ko,
-                )
-            # 발행 예약 시간 계산
-            post_date = plan.week_start + timedelta(days=topic.day_offset)
-            preferred_times = (
-                brand.posting_schedule.instagram.preferred_times
-                if topic.platform.value == "instagram"
-                else brand.posting_schedule.threads.preferred_times
-            )
-            hour, minute = map(int, preferred_times[0].split(":"))
-            from datetime import timezone
-            scheduled_at = datetime(
-                post_date.year, post_date.month, post_date.day, hour, minute
-            )
-
-            post = Post(
-                plan_id=saved_plan.id,
-                platform=topic.platform,
-                media_type=topic.media_type,
-                content_pillar=topic.pillar,
-                topic=topic.topic,
-                content=content,
-                status=PostStatus.DRAFT,
-                scheduled_at=scheduled_at,
-                week_number=week_number,
-            )
-            saved_post = post_repo.save(post)
-            console.print(f"  [green]✓[/green] #{saved_post.id} — {topic.topic[:40]}")
-
-        console.print(f"\n[green]총 {len(plan.topics)}개 포스트 생성 완료.[/green]")
-        console.print("  검토하려면: [bold]branding queue list[/bold]")
+        for p in result.posts:
+            console.print(f"  [green]✓[/green] #{p.id} [{p.status.value}] — {p.topic[:40]}")
+        console.print(f"\n[green]총 {len(result.posts)}개 포스트 생성 완료.[/green]")
+        if brand.automation.auto_approve:
+            console.print("  [cyan]auto_approve 활성화 → 예약 시각에 자동 발행됩니다.[/cyan]")
+        else:
+            console.print("  검토하려면: [bold]branding queue list[/bold]")
     else:
-        console.print("\n[dim]캡션을 생성하려면 --captions 옵션을 추가하거나[/dim]")
-        console.print("[dim]개별 생성: [bold]branding post generate --topic '주제'[/bold][/dim]")
+        console.print("\n[dim]캡션을 생성하려면 --captions 옵션을 추가하세요.[/dim]")
 
 
 @app.command("show")

@@ -1,7 +1,11 @@
+import logging
+
 import typer
 from rich.console import Console
+from rich.logging import RichHandler
 
-from .commands import brand, post, queue, plan
+from ..config import get_settings
+from .commands import brand, post, queue, plan, serve, token
 
 app = typer.Typer(
     name="branding",
@@ -14,12 +18,20 @@ app.add_typer(brand.app, name="brand")
 app.add_typer(post.app, name="post")
 app.add_typer(queue.app, name="queue")
 app.add_typer(plan.app, name="plan")
+app.add_typer(serve.app, name="serve")
+app.add_typer(token.app, name="token")
 
 
 @app.callback()
 def main():
     """브랜딩 자동화 서비스 CLI"""
-    pass
+    level = getattr(logging, get_settings().log_level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(console=console, rich_tracebacks=True, show_path=False)],
+    )
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from .enums import PostStatus, Platform, MediaType, ContentPillar
+from ..utils.time import now_utc
 
 
 class ImageBrief(BaseModel):
@@ -22,6 +23,8 @@ class PostContent(BaseModel):
     hashtags_ko: list[str] = Field(default_factory=list)
     hashtags_en: list[str] = Field(default_factory=list)
     image_brief: Optional[ImageBrief] = None
+    # 실제 발행에 사용할 공개 이미지 URL (Instagram 단일/카루셀). 이미지 생성·호스팅 후 채워짐.
+    image_urls: list[str] = Field(default_factory=list)
 
 
 class Post(BaseModel):
@@ -36,7 +39,7 @@ class Post(BaseModel):
     published_at: Optional[datetime] = None
     meta_post_id: Optional[str] = None
     permalink: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=now_utc)
     week_number: int = Field(default=0)
     plan_id: Optional[int] = None
 
@@ -69,5 +72,5 @@ class ContentPlan(BaseModel):
     theme: str
     theme_ko: str
     topics: list[ContentPlanTopic] = Field(default_factory=list)
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=now_utc)
     status: str = "active"

@@ -9,6 +9,7 @@ from ...config import load_brand_config, get_settings
 from ...models import Post, Platform, MediaType, ContentPillar, PostStatus
 from ...db import init_db, PostRepository
 from ...ai import generate_caption
+from ...publisher import PublishService
 
 app = typer.Typer(help="게시물 생성 및 관리")
 console = Console()
@@ -104,3 +105,30 @@ def generate_post(
         saved = repo.save(post)
         console.print(f"\n[green]✓ DB에 저장됨 (ID: {saved.id}, 상태: DRAFT)[/green]")
         console.print(f"  승인하려면: [bold]branding queue approve {saved.id}[/bold]")
+
+
+@app.command("now")
+def publish_now(
+    post_id: int = typer.Argument(..., help="즉시 발행할 게시물 ID"),
+):
+    """게시물을 예약 시각과 무관하게 즉시 발행."""
+    settings = get_settings()
+    init_db(settings.db_path)
+    repo = PostRepository(settings.db_path)
+    post = repo.get_by_id(post_id)
+    if not post:
+        console.print(f"[red]ID {post_id} 게시물을 찾을 수 없습니다.[/red]")
+        raise typer.Exit(1)
+    if post.status == PostStatus.PUBLISHED:
+        console.print("[yellow]이미 발행된 게시물입니다.[/yellow]")
+        raise typer.Exit(0)
+
+    with console.status(f"[bold green]#{post_id} 발행 중...[/bold green]"):
+        outcome = PublishService(settings).publish_post(post)
+
+    if outcome.success:
+        link = outcome.result.permalink if outcome.result else ""
+        console.print(f"[green]✓ #{post_id} 발행 완료[/green] {link}")
+    else:
+        console.print(f"[red]✗ 발행 실패:[/red] {outcome.error}")
+        raise typer.Exit(1)

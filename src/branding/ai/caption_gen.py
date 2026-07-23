@@ -73,6 +73,7 @@ def generate_caption(
     platform: Platform,
     media_type: MediaType,
     week_theme: Optional[str] = None,
+    model: str = "claude-opus-4-8",
 ) -> PostContent:
     client = get_client(api_key)
     pillar_config = brand_config.get_pillar(pillar.value)
@@ -89,7 +90,7 @@ def generate_caption(
     )
 
     response = client.messages.create(
-        model="claude-opus-4-6",
+        model=model,
         max_tokens=2048,
         system=[make_cached_system_block(brand_config)],
         tools=[POST_CONTENT_TOOL],

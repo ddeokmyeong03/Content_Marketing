@@ -1,11 +1,12 @@
 import json
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Optional
 import sqlite3
 
 from ..models import Post, ContentPlan, ContentPlanTopic, PostStatus, PostContent, ImageBrief
 from ..models.enums import Platform, MediaType, ContentPillar
+from ..utils.time import now_utc, parse_dt
 from .database import get_connection
 
 
@@ -22,6 +23,7 @@ def _row_to_post(row: sqlite3.Row) -> Post:
         hashtags_ko=content_data.get("hashtags_ko", []),
         hashtags_en=content_data.get("hashtags_en", []),
         image_brief=image_brief,
+        image_urls=content_data.get("image_urls", []),
     )
     return Post(
         id=row["id"],
@@ -32,11 +34,11 @@ def _row_to_post(row: sqlite3.Row) -> Post:
         topic=row["topic"],
         content=content,
         status=PostStatus(row["status"]),
-        scheduled_at=datetime.fromisoformat(row["scheduled_at"]) if row["scheduled_at"] else None,
-        published_at=datetime.fromisoformat(row["published_at"]) if row["published_at"] else None,
+        scheduled_at=parse_dt(row["scheduled_at"]),
+        published_at=parse_dt(row["published_at"]),
         meta_post_id=row["meta_post_id"],
         permalink=row["permalink"],
-        created_at=datetime.fromisoformat(row["created_at"]),
+        created_at=parse_dt(row["created_at"]),
         week_number=row["week_number"],
     )
 
@@ -107,8 +109,8 @@ class PostRepository:
         return [_row_to_post(r) for r in rows]
 
     def list_pending_publish(self) -> list[Post]:
-        """발행 시간이 지난 APPROVED 상태 게시물 조회"""
-        now = datetime.utcnow().isoformat()
+        """발행 시간이 지난 APPROVED 상태 게시물 조회 (UTC 기준)"""
+        now = now_utc().isoformat()
         conn = self._conn()
         rows = conn.execute(
             """SELECT * FROM posts
@@ -118,6 +120,17 @@ class PostRepository:
         ).fetchall()
         conn.close()
         return [_row_to_post(r) for r in rows]
+
+    def recent_topics(self, weeks: int = 4) -> list[str]:
+        """최근 N주간 생성된 포스트 주제 목록 (중복 방지용)"""
+        since = (now_utc() - timedelta(weeks=weeks)).isoformat()
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT DISTINCT topic FROM posts WHERE created_at >= ? ORDER BY created_at DESC",
+            (since,),
+        ).fetchall()
+        conn.close()
+        return [r["topic"] for r in rows]
 
     def update_status(self, post_id: int, status: PostStatus) -> None:
         conn = self._conn()
@@ -134,7 +147,7 @@ class PostRepository:
                VALUES (?, ?, ?, ?, ?)""",
             (
                 post_id,
-                datetime.utcnow().isoformat(),
+                now_utc().isoformat(),
                 1 if success else 0,
                 error_msg,
                 json.dumps(response) if response else None,
@@ -193,6 +206,59 @@ class PlanRepository:
             theme=row["theme"],
             theme_ko=row["theme_ko"],
             topics=topics,
-            generated_at=datetime.fromisoformat(row["generated_at"]),
+            generated_at=parse_dt(row["generated_at"]),
             status=row["status"],
         )
+
+
+class TokenRepository:
+    """Meta/Threads 액세스 토큰 영속화. 토큰 자동 갱신 시 사용."""
+
+    def __init__(self, db_path: str | Path):
+        self.db_path = db_path
+
+    def _conn(self) -> sqlite3.Connection:
+        return get_connection(self.db_path)
+
+    def upsert(
+        self,
+        platform: str,
+        access_token: str,
+        token_type: str = "long_lived",
+        expires_at: Optional[datetime] = None,
+    ) -> None:
+        conn = self._conn()
+        conn.execute(
+            """INSERT INTO token_store (platform, access_token, token_type, expires_at, updated_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(platform) DO UPDATE SET
+                   access_token=excluded.access_token,
+                   token_type=excluded.token_type,
+                   expires_at=excluded.expires_at,
+                   updated_at=excluded.updated_at""",
+            (
+                platform,
+                access_token,
+                token_type,
+                expires_at.isoformat() if expires_at else None,
+                now_utc().isoformat(),
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+    def get_token(self, platform: str) -> Optional[str]:
+        conn = self._conn()
+        row = conn.execute(
+            "SELECT access_token FROM token_store WHERE platform=?", (platform,)
+        ).fetchone()
+        conn.close()
+        return row["access_token"] if row else None
+
+    def get_expiry(self, platform: str) -> Optional[datetime]:
+        conn = self._conn()
+        row = conn.execute(
+            "SELECT expires_at FROM token_store WHERE platform=?", (platform,)
+        ).fetchone()
+        conn.close()
+        return parse_dt(row["expires_at"]) if row and row["expires_at"] else None

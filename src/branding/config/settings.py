@@ -22,6 +22,21 @@ class Settings(BaseSettings):
     brand_config_path: Path = Path("./brand/config.yaml")
     log_level: str = "INFO"
 
+    # AI
+    anthropic_model: str = "claude-opus-4-8"
+
+    # Meta / Threads Graph API
+    meta_graph_version: str = "v21.0"
+    meta_graph_base: str = "https://graph.facebook.com"
+    threads_graph_base: str = "https://graph.threads.net"
+    threads_publish_delay_seconds: int = 5  # 컨테이너 생성 후 발행까지 대기
+
+    # Scheduler
+    publish_poll_minutes: int = 5        # 발행 대기 큐 폴링 주기
+    weekly_plan_cron_day: str = "sun"    # 주간 계획 생성 요일
+    weekly_plan_cron_hour: int = 18      # 주간 계획 생성 시각 (로컬)
+    scheduler_timezone: str = "Asia/Seoul"
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "content.db"
