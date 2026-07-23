@@ -4,6 +4,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 
+from ...auth import TokenRefresher
 from ...config import get_settings
 from ...db import TokenRepository, init_db
 from ...models.enums import Platform
@@ -56,3 +57,22 @@ def show_tokens():
         console.print(f"[cyan]{p}[/cyan]: {masked}  (만료: {exp_str})")
     if not found:
         console.print("[dim]저장된 토큰이 없습니다. branding token set 으로 등록하세요.[/dim]")
+
+
+@app.command("refresh")
+def refresh_tokens(
+    force: bool = typer.Option(
+        False, "--force", help="만료 임박 여부와 무관하게 즉시 갱신"
+    ),
+):
+    """만료 임박 롱리브드 토큰 갱신 (Meta/Threads)."""
+    settings = get_settings()
+    init_db(settings.db_path)
+    refresher = TokenRefresher(settings)
+    for platform in (Platform.INSTAGRAM, Platform.THREADS):
+        if force:
+            result = refresher.refresh_platform(platform)
+        else:
+            result = refresher.refresh_if_needed(platform)
+        icon = "[green]✓[/green]" if result.refreshed else "[dim]—[/dim]"
+        console.print(f"{icon} {result.platform}: {result.reason}")

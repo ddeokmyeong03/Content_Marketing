@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     meta_access_token: str = ""
     meta_ig_user_id: str = ""
     meta_threads_user_id: str = ""
+    # 토큰 자동 갱신용 (Meta 앱 자격증명)
+    meta_app_id: str = ""
+    meta_app_secret: str = ""
 
     # App
     data_dir: Path = Path("./data")
@@ -35,7 +38,14 @@ class Settings(BaseSettings):
     publish_poll_minutes: int = 5        # 발행 대기 큐 폴링 주기
     weekly_plan_cron_day: str = "sun"    # 주간 계획 생성 요일
     weekly_plan_cron_hour: int = 18      # 주간 계획 생성 시각 (로컬)
+    token_refresh_hour: int = 3          # 토큰 갱신 점검 시각 (로컬, 매일)
     scheduler_timezone: str = "Asia/Seoul"
+
+    # 토큰 자동 갱신
+    token_refresh_threshold_days: int = 7  # 만료 N일 이내면 갱신
+
+    # 알림
+    notify_webhook_url: str = ""         # Slack 호환 incoming webhook URL (비우면 콘솔만)
 
     @property
     def db_path(self) -> Path:

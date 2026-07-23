@@ -28,8 +28,22 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 | `branding queue list` / `show` / `approve` / `reject` | 발행 큐 검토·승인 |
 | `branding post now <id>` | 특정 게시물 즉시 발행 |
 | `branding token set -p threads -t <TOKEN>` | 액세스 토큰 저장(.env보다 우선) |
+| `branding token refresh [--force]` | 만료 임박 롱리브드 토큰 갱신 |
 | `branding serve publish-once` | 예약 지난 승인 게시물 1회 발행 |
-| `branding serve run` | 스케줄러 데몬 (발행 폴링 + 주간 자동 생성) |
+| `branding serve run` | 스케줄러 데몬 (발행/주간생성/토큰갱신/검토알림) |
+
+## 스케줄러 잡
+
+`branding serve run` 이 등록하는 잡:
+- **publish-poll**: N분마다 예약 지난 승인 게시물 발행
+- **weekly-plan**: 매주 지정 요일/시각에 다음 주 콘텐츠 자동 생성
+- **token-refresh**: 매일 만료 임박 토큰 자동 갱신
+- **review-reminder**: `auto_approve=false`일 때 매일 검토 대기 게시물 알림
+
+## 알림
+
+발행 성공/실패, 주간 생성, 검토 리마인더는 알림으로 전달됩니다. 기본은 콘솔 로그이며,
+`NOTIFY_WEBHOOK_URL`(Slack/Discord 호환 incoming webhook)을 설정하면 해당 채널로도 전송됩니다.
 
 ## 자동화 수준
 

@@ -9,6 +9,7 @@ from ..config.settings import Settings
 from ..db import PostRepository, TokenRepository
 from ..models import Post, PostStatus
 from ..models.enums import Platform
+from ..notify import Notifier, get_notifier
 from ..utils.time import now_utc
 from .base import MetaAPIError, PublishResult
 from .instagram import InstagramPublisher
@@ -31,10 +32,12 @@ class PublishService:
         settings: Settings,
         post_repo: Optional[PostRepository] = None,
         token_repo: Optional[TokenRepository] = None,
+        notifier: Optional[Notifier] = None,
     ):
         self.settings = settings
         self.post_repo = post_repo or PostRepository(settings.db_path)
         self.token_repo = token_repo or TokenRepository(settings.db_path)
+        self.notifier = notifier or get_notifier(settings)
 
     # --- 토큰 해석: token_store 우선, 없으면 .env 값 ---
     def _token(self, platform: Platform) -> str:
@@ -87,6 +90,10 @@ class PublishService:
             if post.id is not None:
                 self.post_repo.update_status(post.id, PostStatus.FAILED)
                 self.post_repo.log_publish_attempt(post.id, success=False, error_msg=str(e))
+            self.notifier.error(
+                f"발행 실패 #{post.id} ({post.platform.value})",
+                f"{post.topic[:40]} — {e}",
+            )
             return PublishOutcome(post_id=post.id, success=False, error=str(e))
 
         # 성공: 발행 메타데이터 기록
@@ -104,6 +111,10 @@ class PublishService:
                 post.id, success=True, response=primary.raw if primary else None
             )
         logger.info("발행 성공 (post #%s → %s)", post.id, primary.meta_post_id if primary else "?")
+        self.notifier.success(
+            f"발행 완료 #{post.id} ({post.platform.value})",
+            (primary.permalink if primary and primary.permalink else post.topic[:40]),
+        )
         return PublishOutcome(post_id=post.id, success=True, result=primary)
 
     def run_pending(self) -> list[PublishOutcome]:

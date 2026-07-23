@@ -31,9 +31,16 @@ class GraphHTTP:
     실패 시 응답 본문의 error 메시지를 담아 MetaAPIError를 발생시킵니다.
     """
 
-    def __init__(self, base: str, version: str, timeout: float = 30.0):
+    def __init__(
+        self,
+        base: str,
+        version: str,
+        timeout: float = 30.0,
+        transport: httpx.BaseTransport | None = None,
+    ):
         self._base = f"{base.rstrip('/')}/{version}"
         self._timeout = timeout
+        self._transport = transport  # 테스트에서 httpx.MockTransport 주입용
 
     def post(self, path: str, data: dict) -> dict:
         return self._request("POST", path, data=data)
@@ -50,7 +57,7 @@ class GraphHTTP:
     ) -> dict:
         url = f"{self._base}/{path.lstrip('/')}"
         try:
-            with httpx.Client(timeout=self._timeout) as client:
+            with httpx.Client(timeout=self._timeout, transport=self._transport) as client:
                 resp = client.request(method, url, data=data, params=params)
         except httpx.HTTPError as e:
             raise MetaAPIError(f"네트워크 오류: {e}") from e
