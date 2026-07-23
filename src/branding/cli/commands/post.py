@@ -8,7 +8,7 @@ from rich import box
 from ...config import load_brand_config, get_settings
 from ...models import Post, Platform, MediaType, ContentPillar, PostStatus
 from ...db import init_db, PostRepository
-from ...ai import generate_caption
+from ...ai import generate_caption, generate_optimized_caption
 from ...publisher import PublishService
 
 app = typer.Typer(help="게시물 생성 및 관리")
@@ -25,9 +25,10 @@ def generate_post(
     platform: str = typer.Option("instagram", "--platform", "-p", help=f"플랫폼: {PLATFORM_CHOICES}"),
     pillar: str = typer.Option("startup_reality", "--pillar", help=f"콘텐츠 기둥: {PILLAR_CHOICES}"),
     media_type: str = typer.Option("image", "--media-type", "-m", help=f"미디어 타입: {MEDIA_CHOICES}"),
+    optimize: bool = typer.Option(True, "--optimize/--no-optimize", help="참여 엔진 자기평가·개선 루프 사용"),
     save: bool = typer.Option(True, "--save/--no-save", help="DB에 저장 여부"),
 ):
-    """AI로 포스트 캡션 생성"""
+    """AI로 포스트 캡션 생성 (참여율 최적화)"""
     settings = get_settings()
     if not settings.anthropic_api_key:
         console.print("[red]ANTHROPIC_API_KEY 환경변수가 설정되지 않았습니다.[/red]")
@@ -44,14 +45,16 @@ def generate_post(
     pillar_enum = ContentPillar(pillar)
     media_enum = MediaType(media_type)
 
+    caption_fn = generate_optimized_caption if optimize else generate_caption
     with console.status(f"[bold green]Claude가 '{topic}' 캡션을 생성하고 있습니다...[/bold green]"):
-        content = generate_caption(
+        content = caption_fn(
             brand_config=brand,
             api_key=settings.anthropic_api_key,
             topic=topic,
             pillar=pillar_enum,
             platform=platform_enum,
             media_type=media_enum,
+            model=settings.anthropic_model,
         )
 
     # 결과 출력
@@ -64,9 +67,23 @@ def generate_post(
     if content.caption_en:
         console.print(Panel(content.caption_en, title="Caption (English)", border_style="dim"))
 
-    if content.hooks:
+    if content.engagement_score is not None:
+        s = content.engagement_score
+        c = "green" if s >= 80 else ("yellow" if s >= 70 else "red")
+        console.print(f"[{c}]참여 예측 점수: {s}/100[/{c}]"
+                      + (f"  [dim]{content.engagement_notes}[/dim]" if content.engagement_notes else ""))
+    if content.hook_variants:
+        lines = [
+            f"  [{hv.predicted_score:>3}] {hv.technique} — {hv.text}"
+            for hv in sorted(content.hook_variants, key=lambda h: -h.predicted_score)
+        ]
+        title = "훅 후보 (기법 · 예측점수)"
+        if content.chosen_hook:
+            title += f"  · 채택: {content.chosen_hook[:30]}…"
+        console.print(Panel("\n".join(lines), title=title, border_style="yellow"))
+    elif content.hooks:
         hooks_text = "\n".join(f"  {i+1}. {h}" for i, h in enumerate(content.hooks))
-        console.print(Panel(hooks_text, title="훅 옵션 (3가지)", border_style="yellow"))
+        console.print(Panel(hooks_text, title="훅 옵션", border_style="yellow"))
 
     if content.cta:
         console.print(f"[bold]CTA:[/bold] {content.cta}")

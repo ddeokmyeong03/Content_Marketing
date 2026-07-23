@@ -4,27 +4,15 @@ from pathlib import Path
 from typing import Optional
 import sqlite3
 
-from ..models import Post, ContentPlan, ContentPlanTopic, PostStatus, PostContent, ImageBrief
+from ..models import Post, ContentPlan, ContentPlanTopic, PostStatus, PostContent
 from ..models.enums import Platform, MediaType, ContentPillar
 from ..utils.time import now_utc, parse_dt
 from .database import get_connection
 
 
 def _row_to_post(row: sqlite3.Row) -> Post:
-    content_data = json.loads(row["content_json"])
-    image_brief = None
-    if content_data.get("image_brief"):
-        image_brief = ImageBrief(**content_data["image_brief"])
-    content = PostContent(
-        caption_ko=content_data["caption_ko"],
-        caption_en=content_data.get("caption_en"),
-        hooks=content_data.get("hooks", []),
-        cta=content_data.get("cta", ""),
-        hashtags_ko=content_data.get("hashtags_ko", []),
-        hashtags_en=content_data.get("hashtags_en", []),
-        image_brief=image_brief,
-        image_urls=content_data.get("image_urls", []),
-    )
+    # content_json 은 PostContent.model_dump_json() 결과이므로 그대로 역직렬화
+    content = PostContent.model_validate_json(row["content_json"])
     return Post(
         id=row["id"],
         plan_id=row["plan_id"],

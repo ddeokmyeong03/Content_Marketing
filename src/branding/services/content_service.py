@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Callable, Optional
 
-from ..ai import generate_caption, generate_weekly_plan
+from ..ai import generate_caption, generate_optimized_caption, generate_weekly_plan
 from ..config.brand_config import BrandConfig
 from ..config.settings import Settings
 from ..db import PlanRepository, PostRepository, init_db
@@ -49,6 +49,7 @@ def generate_week(
     brand: BrandConfig,
     week_start: Optional[date] = None,
     with_captions: bool = True,
+    optimize: bool = True,
     progress: Optional[Callable[[int, int, str], None]] = None,
 ) -> WeekResult:
     if not settings.anthropic_api_key:
@@ -82,7 +83,8 @@ def generate_week(
     for i, topic in enumerate(saved_plan.topics, 1):
         if progress:
             progress(i, len(saved_plan.topics), topic.topic)
-        content = generate_caption(
+        caption_fn = generate_optimized_caption if optimize else generate_caption
+        content = caption_fn(
             brand_config=brand,
             api_key=settings.anthropic_api_key,
             topic=topic.topic,

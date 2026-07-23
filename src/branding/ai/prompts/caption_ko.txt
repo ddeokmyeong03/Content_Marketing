@@ -1,42 +1,59 @@
-다음 주제로 {{ platform }} 포스트 캡션을 작성해 주세요.
+다음 주제로 {{ platform }} 포스트를 **참여율 극대화** 관점에서 작성해 주세요.
 
 **콘텐츠 기둥**: {{ pillar_name }} ({{ pillar_id }})
 **주제**: {{ topic }}
 **미디어 타입**: {{ media_type }}
 {% if week_theme %}**이번 주 테마**: {{ week_theme }}{% endif %}
 
+## 전략 브리핑
+
+### 최우선 목표 지표: {{ primary_metric }}
+{{ cta_strategy }}
+
+### 설득 강도
+{{ intensity_guide }}
+
+### 반드시 활용할 행동심리 레버
+{{ levers_text }}
+
+### 절대 금지
+{{ banned_tactics }}
+(위 기법은 신뢰를 무너뜨립니다. 모든 주장은 사실 기반이어야 합니다.)
+
 ## 작성 요구사항
+
+### 훅 후보 (hook_variants) — {{ hook_variants }}개
+- 서로 **다른 심리 기법**을 쓴 첫 문장 {{ hook_variants }}개를 제안하세요.
+- 활용 가능한 훅 유형:
+{{ hook_types_text }}
+- 각 훅마다: text(문장), technique(사용 기법 id), predicted_score(0-100 자기예측 참여 점수 — 이 니치·지표 기준 스크롤 정지력)
+- 청중의 고통/욕망을 정조준하거나 통념을 깨서 스크롤을 멈추게 하세요.
+
+### 채택 훅 (chosen_hook)
+- 위 후보 중 목표 지표에 가장 강력한 훅 하나를 골라 그대로 적으세요. 이 문장이 캡션 첫 줄이 됩니다.
 
 ### 캡션 (caption_ko)
 - 길이: Instagram {{ 'carousel은 200-400자, single image는 100-250자' if platform == 'instagram' else 'Threads는 150자 이내' }}
-- 구성: [훅 문장] → [본문 내용] → [마무리/CTA]
-- 줄바꿈을 적절히 활용해 가독성 높이기
-- 경험에서 나온 인사이트나 구체적 사례 포함
-
-### 훅 (hooks) - 3가지 옵션
-- 각각 다른 스타일의 첫 문장 3가지 제안
-- 숫자 훅 ("3가지 실수를 했습니다"), 질문 훅 ("왜 ~할까요?"), 반전 훅 ("모두가 틀렸습니다") 중 적절히 선택
+- 구성: [채택 훅] → [본문: 구체적 사례·숫자·경험으로 가치 전달] → [자연스러운 CTA]
+- 줄바꿈으로 가독성 확보. 한 줄도 버리지 말 것.
+- 정의된 타깃 청중 한 명에게 말하듯, 그들의 언어로.
 
 ### CTA (cta)
-- 자연스럽고 부담 없는 행동 유도
-- "저장", "공유", "댓글", "팔로우" 중 가장 적합한 것
-- 예: "이 글이 도움됐다면 저장해 두세요." / "비슷한 경험이 있으신가요? 댓글로 나눠주세요."
+- 최우선 지표({{ primary_metric }})를 겨냥한 자연스러운 행동 유도 한 문장.
+- 부담스럽지 않게, 그러나 명확하게.
 
 ### 해시태그
-- hashtags_ko: 한국어 해시태그 {{ '6-8개' if platform == 'instagram' else '2-3개' }}
-  예시: #창업일기 #스타트업 #자동화 #비즈니스성장 #사이드프로젝트
+- hashtags_ko: 한국어 해시태그 {{ '6-8개' if platform == 'instagram' else '2-3개' }} (니치 밀착 태그 우선)
 - hashtags_en: 영어 해시태그 {{ '4-6개' if platform == 'instagram' else '1-2개' }}
-  예시: #startup #entrepreneurship #automation #businessgrowth
 
 ### 영어 번역 (caption_en)
-- 캡션을 자연스러운 영어로 번역
-- 직역 금지, 영어권 독자에게 자연스러운 표현 사용
+- 직역 금지. 영어권 독자에게 자연스러운 표현으로.
 {% if media_type in ['image', 'carousel'] %}
 ### 이미지 비주얼 브리프 (image_brief)
-- description: 이미지가 담아야 할 시각적 장면이나 그래픽 설명
-- style_notes: 브랜드 비주얼 스타일에 맞는 연출 방향 (미니멀, 다크 톤)
-- text_overlay: 이미지에 올릴 텍스트 (있는 경우)
-- color_hints: 사용할 색상 코드 또는 이름 1-3가지
+- description: 이미지가 담을 시각적 장면/그래픽 (첫 컷이 스크롤을 멈추게)
+- style_notes: 브랜드 비주얼 스타일 (미니멀, 다크/뉴트럴 톤)
+- text_overlay: 이미지에 올릴 텍스트 (훅과 연결된 강한 한 줄)
+- color_hints: 색상 코드/이름 1-3가지
 - midjourney_prompt: Midjourney용 영어 프롬프트 (스타일 태그 포함)
 - dall_e_prompt: DALL-E용 영어 프롬프트
 {% endif %}

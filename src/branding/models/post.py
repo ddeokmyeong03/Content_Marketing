@@ -15,16 +15,28 @@ class ImageBrief(BaseModel):
     dall_e_prompt: str
 
 
+class HookVariant(BaseModel):
+    """훅(첫 문장) 후보 — 사용된 심리 기법과 자기예측 점수 포함."""
+    text: str
+    technique: str = ""            # 예: curiosity_gap, contrarian_hook
+    predicted_score: int = 0       # 모델 자기예측 참여 점수 (0-100)
+
+
 class PostContent(BaseModel):
     caption_ko: str
     caption_en: Optional[str] = None
-    hooks: list[str] = Field(default_factory=list)
+    hooks: list[str] = Field(default_factory=list)  # 훅 텍스트 (표시/호환용)
     cta: str
     hashtags_ko: list[str] = Field(default_factory=list)
     hashtags_en: list[str] = Field(default_factory=list)
     image_brief: Optional[ImageBrief] = None
     # 실제 발행에 사용할 공개 이미지 URL (Instagram 단일/카루셀). 이미지 생성·호스팅 후 채워짐.
     image_urls: list[str] = Field(default_factory=list)
+    # 참여 엔진 산출물
+    hook_variants: list[HookVariant] = Field(default_factory=list)
+    chosen_hook: Optional[str] = None          # 캡션 첫 줄로 채택된 훅
+    engagement_score: Optional[int] = None      # 최종 캡션 예측 참여 점수 (0-100)
+    engagement_notes: Optional[str] = None      # 개선 코멘트/평가 근거
 
 
 class Post(BaseModel):

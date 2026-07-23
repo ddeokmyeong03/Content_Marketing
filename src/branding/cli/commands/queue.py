@@ -95,10 +95,27 @@ def show_post(post_id: int = typer.Argument(..., help="게시물 ID")):
         title=f"게시물 #{post.id}: {post.topic}",
         border_style="blue",
     ))
+    if post.content.engagement_score is not None:
+        score = post.content.engagement_score
+        color = "green" if score >= 80 else ("yellow" if score >= 70 else "red")
+        console.print(Panel(
+            f"[{color}]참여 예측 점수: {score}/100[/{color}]"
+            + (f"\n[dim]{post.content.engagement_notes}[/dim]" if post.content.engagement_notes else ""),
+            title="참여 엔진 평가",
+            border_style=color,
+        ))
+
     console.print(Panel(post.content.caption_ko, title="캡션 (한국어)"))
     if post.content.caption_en:
         console.print(Panel(post.content.caption_en, title="Caption (English)", border_style="dim"))
-    if post.content.hooks:
+
+    if post.content.chosen_hook:
+        console.print(f"[bold green]채택 훅:[/bold green] {post.content.chosen_hook}")
+    if post.content.hook_variants:
+        console.print("[bold]훅 후보 (기법 · 예측점수):[/bold]")
+        for i, hv in enumerate(sorted(post.content.hook_variants, key=lambda h: -h.predicted_score), 1):
+            console.print(f"  {i}. [{hv.predicted_score:>3}] [dim]{hv.technique}[/dim] — {hv.text}")
+    elif post.content.hooks:
         console.print("[bold]훅 옵션:[/bold]")
         for i, hook in enumerate(post.content.hooks, 1):
             console.print(f"  {i}. {hook}")
