@@ -47,7 +47,7 @@ breakout = z >= Z_THRESHOLD   # 기본 2.5~3.0
 | **P3** ✅ 역설계 | AI 구조 분해 → 승리 공식 저장 | `ai/deconstruct.py`, `breakout_patterns` 테이블, `insights deconstruct`/`patterns` |
 | **P4** ✅ 귀인 | 팔로워 순증가를 게시물 propensity로 분배 | `analysis/attribution.py`, `insights attribution` |
 | **P5** ✅ 반영 (폐루프 완성) | 승리 공식을 plan/caption 프롬프트에 재주입 | `content_service`가 `BreakoutPatternRepository.top`을 planner/caption에 주입 |
-| **P6**(확장) | 외부/경쟁사 바이럴 반자동 분해 | 운영자 URL·샘플 투입 → AI 분해 |
+| **P6** ✅ 외부/경쟁사 바이럴 반자동 분해 | 운영자가 바이럴 텍스트 투입 → AI 분해 → 승리 공식(source=external) 저장 | `ai/deconstruct_external`, `insights external` |
 
 ## 4. 데이터 모델
 

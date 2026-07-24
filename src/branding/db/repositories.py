@@ -477,8 +477,9 @@ class BreakoutPatternRepository:
             """INSERT INTO breakout_patterns
                (post_id, detected_at, breakout_score, hook_type, psychology_levers,
                 format, topic_angle, structure_notes, emotional_trigger,
-                spread_hypothesis, replicable_formula, confidence, metrics_snapshot)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                spread_hypothesis, replicable_formula, confidence, metrics_snapshot,
+                source, source_ref)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 pattern.post_id,
                 pattern.detected_at.isoformat(),
@@ -493,6 +494,8 @@ class BreakoutPatternRepository:
                 pattern.replicable_formula,
                 pattern.confidence,
                 json.dumps(pattern.metrics_snapshot, ensure_ascii=False),
+                pattern.source,
+                pattern.source_ref,
             ),
         )
         conn.commit()
@@ -501,9 +504,12 @@ class BreakoutPatternRepository:
         return result
 
     def _row(self, row: sqlite3.Row) -> BreakoutPattern:
+        keys = row.keys()
         return BreakoutPattern(
             id=row["id"],
             post_id=row["post_id"],
+            source=(row["source"] if "source" in keys and row["source"] else "internal"),
+            source_ref=(row["source_ref"] if "source_ref" in keys else None),
             breakout_score=row["breakout_score"],
             hook_type=row["hook_type"] or "",
             psychology_levers=json.loads(row["psychology_levers"]) if row["psychology_levers"] else [],

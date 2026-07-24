@@ -181,6 +181,46 @@ def deconstruct(
         ))
 
 
+@app.command("external")
+def external(
+    text: str = typer.Option(None, "--text", "-t", help="바이럴 게시물 텍스트"),
+    file: str = typer.Option(None, "--file", "-f", help="텍스트를 담은 파일 경로"),
+    platform: str = typer.Option("instagram", "--platform", "-p", help="instagram|threads"),
+    ref: str = typer.Option(None, "--ref", help="출처(URL/핸들/메모)"),
+    note: str = typer.Option(None, "--note", help="관측된 반응 메모 (예: 좋아요 5천)"),
+):
+    """외부/경쟁사 바이럴 게시물을 역설계해 승리 공식으로 저장(반자동)."""
+    from pathlib import Path
+    from ...ai.deconstruct import deconstruct_external
+
+    settings = get_settings()
+    if not settings.anthropic_api_key:
+        console.print("[red]ANTHROPIC_API_KEY 가 설정되지 않았습니다.[/red]")
+        raise typer.Exit(1)
+    body = text or (Path(file).read_text(encoding="utf-8") if file else None)
+    if not body:
+        console.print("[red]--text 또는 --file 로 게시물 텍스트를 제공하세요.[/red]")
+        raise typer.Exit(1)
+
+    init_db(settings.db_path)
+    brand = load_brand_config(settings.brand_config_path)
+    with console.status("[bold green]외부 바이럴을 역설계하고 있습니다...[/bold green]"):
+        pattern = deconstruct_external(
+            brand, settings.anthropic_api_key, text=body, platform=Platform(platform),
+            source_ref=ref, observed_note=note, model=settings.anthropic_model,
+        )
+        saved = BreakoutPatternRepository(settings.db_path).save(pattern)
+    console.print(Panel(
+        f"[bold]훅 유형:[/bold] {saved.hook_type}\n"
+        f"[bold]심리 레버:[/bold] {', '.join(saved.psychology_levers)}\n"
+        f"[bold]확산 가설:[/bold] {saved.spread_hypothesis}\n"
+        f"[bold]재현 공식:[/bold] {saved.replicable_formula}",
+        title=f"외부 승리 공식 저장됨 (신뢰도 {saved.confidence}, 출처 {saved.source_ref or 'n/a'})",
+        border_style="magenta",
+    ))
+    console.print("[dim]이 공식은 다음 기획·캡션 생성에 자동 반영됩니다.[/dim]")
+
+
 @app.command("patterns")
 def patterns(limit: int = typer.Option(10, "--limit", "-n", help="표시 개수")):
     """저장된 승리 공식(역설계 결과) 확인."""
@@ -192,15 +232,18 @@ def patterns(limit: int = typer.Option(10, "--limit", "-n", help="표시 개수"
         return
     table = Table(title="승리 공식 라이브러리", box=box.ROUNDED)
     table.add_column("신뢰도", justify="right", width=6)
+    table.add_column("출처", width=8)
     table.add_column("훅 유형", width=16)
-    table.add_column("심리 레버", width=24)
-    table.add_column("재현 공식", width=40)
+    table.add_column("심리 레버", width=22)
+    table.add_column("재현 공식", width=36)
     for p in rows:
+        src = "외부" if p.source == "external" else "내부"
         table.add_row(
             str(p.confidence),
+            src,
             p.hook_type,
-            ", ".join(p.psychology_levers)[:22],
-            (p.replicable_formula or "")[:38],
+            ", ".join(p.psychology_levers)[:20],
+            (p.replicable_formula or "")[:34],
         )
     console.print(table)
 

@@ -1,0 +1,22 @@
+아래는 우리 니치 안에서 **외부 계정이 크게 뜬(바이럴) 게시물**의 텍스트입니다.
+당신은 그로스 애널리스트입니다. 이 게시물이 **왜 반응을 얻었는지** 역설계해,
+우리 브랜드가 재현할 수 있는 '승리 공식'으로 분해하세요.
+
+**플랫폼**: {{ platform }}
+{% if source_ref %}**출처**: {{ source_ref }}{% endif %}
+{% if observed_note %}**관측된 반응(운영자 메모)**: {{ observed_note }}{% endif %}
+
+---
+{{ text }}
+---
+
+## 분석 지침
+- **게시물의 실제 텍스트에 근거**해 분해하세요. 수치가 없으면 텍스트 구조로 추론합니다.
+- 이건 외부 사례입니다. 우리 브랜드 톤·니치에 맞게 **재현 가능한 형태**로 공식을 뽑으세요(그대로 베끼지 않도록).
+- replicable_formula는 우리 콘텐츠에 바로 적용 가능한 구체적 템플릿으로 쓰세요.
+
+## 반환 (score_breakout_pattern 도구)
+- hook_type / psychology_levers / format / topic_angle / structure_notes / emotional_trigger
+- spread_hypothesis: 왜 반응/확산으로 이어졌나
+- replicable_formula: 재현 템플릿
+- confidence: 이 분석의 신뢰도 (0-100). 수치가 없으면 보수적으로.

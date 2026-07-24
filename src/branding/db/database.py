@@ -93,7 +93,9 @@ CREATE TABLE IF NOT EXISTS breakout_patterns (
     spread_hypothesis TEXT,
     replicable_formula TEXT,
     confidence        INTEGER DEFAULT 0,
-    metrics_snapshot  TEXT
+    metrics_snapshot  TEXT,
+    source            TEXT DEFAULT 'internal',
+    source_ref        TEXT
 );
 """
 
@@ -105,11 +107,20 @@ _MIGRATIONS: dict[str, list[tuple[str, str]]] = {
         ("follows", "INTEGER DEFAULT 0"),
         ("total_interactions", "INTEGER DEFAULT 0"),
     ],
+    "breakout_patterns": [
+        ("source", "TEXT DEFAULT 'internal'"),
+        ("source_ref", "TEXT"),
+    ],
 }
 
 
 def _apply_migrations(conn: sqlite3.Connection) -> None:
     for table, columns in _MIGRATIONS.items():
+        # 테이블이 아직 없으면 건너뜀 (CREATE 단계에서 최신 스키마로 생성됨)
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone():
+            continue
         existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
         for col_name, col_def in columns:
             if col_name not in existing:

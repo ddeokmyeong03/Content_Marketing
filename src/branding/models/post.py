@@ -107,9 +107,15 @@ class AccountMetric(BaseModel):
 
 
 class BreakoutPattern(BaseModel):
-    """브레이크아웃 게시물의 AI 역설계 결과 — 재현 가능한 '승리 공식'."""
+    """브레이크아웃 게시물의 AI 역설계 결과 — 재현 가능한 '승리 공식'.
+
+    source='internal'은 본 계정 게시물(post_id 있음), 'external'은 외부/경쟁사
+    바이럴 예시(post_id 없음, source_ref에 출처).
+    """
     id: Optional[int] = None
-    post_id: int
+    post_id: Optional[int] = None
+    source: str = "internal"          # internal | external
+    source_ref: Optional[str] = None  # 외부일 때 출처(URL/핸들/메모)
     breakout_score: float = 0.0
     hook_type: str = ""
     psychology_levers: list[str] = Field(default_factory=list)

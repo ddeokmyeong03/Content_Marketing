@@ -16,6 +16,7 @@ from ..models.enums import Platform
 from .client import get_client, make_cached_system_block
 
 DECONSTRUCT_PROMPT_TEMPLATE = Path(__file__).parent / "prompts" / "deconstruct.txt"
+DECONSTRUCT_EXTERNAL_TEMPLATE = Path(__file__).parent / "prompts" / "deconstruct_external.txt"
 
 DECONSTRUCT_TOOL = {
     "name": "score_breakout_pattern",
@@ -42,11 +43,18 @@ DECONSTRUCT_TOOL = {
 
 
 def pattern_from_tool_input(
-    data: dict, post_id: int, breakout_score: float, metrics_snapshot: dict
+    data: dict,
+    post_id: Optional[int] = None,
+    breakout_score: float = 0.0,
+    metrics_snapshot: Optional[dict] = None,
+    source: str = "internal",
+    source_ref: Optional[str] = None,
 ) -> BreakoutPattern:
     """도구 응답(dict)을 BreakoutPattern으로 변환 (순수 함수, 테스트 대상)."""
     return BreakoutPattern(
         post_id=post_id,
+        source=source,
+        source_ref=source_ref,
         breakout_score=breakout_score,
         hook_type=data.get("hook_type", ""),
         psychology_levers=data.get("psychology_levers", []),
@@ -57,7 +65,7 @@ def pattern_from_tool_input(
         spread_hypothesis=data.get("spread_hypothesis", ""),
         replicable_formula=data.get("replicable_formula", ""),
         confidence=int(data.get("confidence", 0)),
-        metrics_snapshot=metrics_snapshot,
+        metrics_snapshot=metrics_snapshot or {},
     )
 
 
@@ -94,3 +102,37 @@ def deconstruct_breakout(
     if block is None:
         raise RuntimeError("Claude가 역설계 결과를 반환하지 않았습니다.")
     return pattern_from_tool_input(block.input, post.id, breakout_score, metrics_snapshot)
+
+
+def deconstruct_external(
+    brand_config: BrandConfig,
+    api_key: str,
+    text: str,
+    platform: Platform,
+    source_ref: Optional[str] = None,
+    observed_note: Optional[str] = None,
+    model: str = "claude-opus-4-8",
+) -> BreakoutPattern:
+    """외부/경쟁사 바이럴 게시물 텍스트를 역설계 (source='external')."""
+    client = get_client(api_key)
+    template = Template(DECONSTRUCT_EXTERNAL_TEMPLATE.read_text(encoding="utf-8"))
+    prompt = template.render(
+        platform=platform.value,
+        source_ref=source_ref,
+        observed_note=observed_note,
+        text=text,
+    )
+    response = client.messages.create(
+        model=model,
+        max_tokens=1536,
+        system=[make_cached_system_block(brand_config)],
+        tools=[DECONSTRUCT_TOOL],
+        tool_choice={"type": "tool", "name": "score_breakout_pattern"},
+        messages=[{"role": "user", "content": prompt}],
+    )
+    block = next((b for b in response.content if b.type == "tool_use"), None)
+    if block is None:
+        raise RuntimeError("Claude가 역설계 결과를 반환하지 않았습니다.")
+    return pattern_from_tool_input(
+        block.input, post_id=None, source="external", source_ref=source_ref,
+    )
