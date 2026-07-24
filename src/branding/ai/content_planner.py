@@ -52,6 +52,7 @@ def generate_weekly_plan(
     week_start: Optional[date] = None,
     recent_topics: Optional[list[str]] = None,
     top_performers: Optional[list[dict]] = None,
+    winning_patterns: Optional[list] = None,
     model: str = "claude-opus-4-8",
 ) -> ContentPlan:
     if week_start is None:
@@ -74,6 +75,7 @@ def generate_weekly_plan(
         pillars=brand_config.content_pillars,
         recent_topics=recent_topics or [],
         top_performers=top_performers or [],
+        winning_patterns=winning_patterns or [],
         total_posts=total_posts,
     )
 

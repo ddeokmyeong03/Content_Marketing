@@ -14,7 +14,7 @@ from typing import Optional
 from jinja2 import Template
 
 from ..config.brand_config import BrandConfig
-from ..models import PostContent, ContentPillar, Platform, MediaType
+from ..models import PostContent, BreakoutPattern, ContentPillar, Platform, MediaType
 from .caption_gen import generate_caption
 from .client import get_client, make_cached_system_block
 
@@ -93,6 +93,7 @@ def generate_optimized_caption(
     media_type: MediaType,
     week_theme: Optional[str] = None,
     model: str = "claude-opus-4-8",
+    winning_patterns: Optional[list[BreakoutPattern]] = None,
 ) -> PostContent:
     """생성 → 자기평가 → (임계 미만이면) 1회 개선 재생성 → 최고 점수 반환."""
     threshold = brand_config.engagement.min_hook_score
@@ -101,6 +102,7 @@ def generate_optimized_caption(
         content = generate_caption(
             brand_config, api_key, topic, pillar, platform, media_type,
             week_theme=week_theme, model=model, extra_guidance=extra,
+            winning_patterns=winning_patterns,
         )
         ev = evaluate_caption(brand_config, api_key, content, platform, model=model)
         content.engagement_score = ev.overall

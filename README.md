@@ -62,6 +62,7 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 - **훅 엔지니어링** — 서로 다른 기법의 훅 N개 생성 + 자기예측 점수로 최적 훅 채택
 - **자기평가·개선 루프** — 생성 후 루브릭으로 참여 점수를 매기고, `min_hook_score` 미만이면 평가를 반영해 1회 자동 재생성 (`generate_optimized_caption`)
 - **성과 측정 → 피드백 루프** — 발행 후 IG/Threads 실제 지표(저장·댓글·공유·도달)를 수집(`insights sync`)하고, 상위 성과 주제/훅을 **다음 주 기획에 재주입**(`MetricsRepository.top_performers` → 기획 프롬프트). 예측 → 측정 → 학습이 순환합니다.
+- **브레이크아웃 성장 분석 (BGI)** — 팔로워 대비 압도적으로 뜬 게시물을 탐지(`insights breakouts`)하고 AI로 왜 떴는지 역설계(`insights deconstruct`)해 '승리 공식'으로 축적, 다음 기획·캡션 생성에 자동 재주입(폐루프). 상세: `docs/GROWTH_ANALYSIS.md`
 
 > 니치·청중·심리 레버·목표 지표·설득 강도는 모두 `brand/config.yaml`에서 **코드 수정 없이** 조정합니다.
 

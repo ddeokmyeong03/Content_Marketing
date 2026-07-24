@@ -19,6 +19,13 @@
 ### 절대 금지
 {{ banned_tactics }}
 (위 기법은 신뢰를 무너뜨립니다. 모든 주장은 사실 기반이어야 합니다.)
+{% if winning_patterns %}
+### 이 계정에서 검증된 승리 공식 (실제로 크게 뜬 게시물에서 역설계됨)
+아래는 이 계정에서 팔로워 대비 압도적으로 반응이 좋았던 게시물의 재현 공식입니다. 이 각도·구조를 참고해 **재현·변주**하되, 똑같이 베끼지는 마세요.
+{% for p in winning_patterns %}
+- [{{ p.hook_type }}] {{ p.replicable_formula }}{% if p.psychology_levers %} (레버: {{ p.psychology_levers | join(', ') }}){% endif %}{% if p.spread_hypothesis %} — 확산 이유: {{ p.spread_hypothesis }}{% endif %}
+{% endfor %}
+{% endif %}
 
 ## 작성 요구사항
 

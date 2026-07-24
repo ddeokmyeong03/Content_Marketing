@@ -17,6 +17,13 @@
 - [{{ p.pillar }}] {{ p.topic }}{% if p.chosen_hook %} — 훅: "{{ p.chosen_hook }}"{% endif %} (참여율 {{ p.engagement_rate }})
 {% endfor %}
 {% endif %}
+{% if winning_patterns %}
+## 이 계정에서 검증된 승리 공식 (크게 뜬 게시물 역설계)
+팔로워 대비 압도적으로 뜬 게시물에서 도출된 재현 공식입니다. 이번 주 기획에 이 각도를 의도적으로 녹이세요.
+{% for p in winning_patterns %}
+- [{{ p.hook_type }}] {{ p.topic_angle }} — {{ p.replicable_formula }}
+{% endfor %}
+{% endif %}
 
 ## 콘텐츠 기둥 비중
 {% for pillar in pillars %}

@@ -15,7 +15,9 @@ from typing import Callable, Optional
 from ..ai import generate_caption, generate_optimized_caption, generate_weekly_plan
 from ..config.brand_config import BrandConfig
 from ..config.settings import Settings
-from ..db import MetricsRepository, PlanRepository, PostRepository, init_db
+from ..db import (
+    BreakoutPatternRepository, MetricsRepository, PlanRepository, PostRepository, init_db,
+)
 from ..models import ContentPlan, Post, PostStatus
 from ..models.enums import Platform
 from ..utils.time import local_datetime, to_utc
@@ -65,12 +67,15 @@ def generate_week(
     top = metrics_repo.top_performers(
         weeks=8, limit=8, order_by=brand.engagement.primary_metric
     )
+    # 역설계된 '승리 공식' 재주입 (BGI 폐루프)
+    winning_patterns = BreakoutPatternRepository(settings.db_path).top(limit=3)
     plan = generate_weekly_plan(
         brand_config=brand,
         api_key=settings.anthropic_api_key,
         week_start=week_start,
         recent_topics=recent,
         top_performers=top,
+        winning_patterns=winning_patterns,
         model=settings.anthropic_model,
     )
     saved_plan = plan_repo.save(plan)
@@ -98,6 +103,7 @@ def generate_week(
             media_type=topic.media_type,
             week_theme=saved_plan.theme_ko,
             model=settings.anthropic_model,
+            winning_patterns=winning_patterns,
         )
         post_day = saved_plan.week_start + timedelta(days=topic.day_offset)
         slot_key = (topic.platform.value, topic.day_offset)

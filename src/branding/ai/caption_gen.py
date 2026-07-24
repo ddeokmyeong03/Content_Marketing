@@ -3,7 +3,10 @@ from typing import Optional
 from jinja2 import Template
 
 from ..config.brand_config import BrandConfig
-from ..models import PostContent, ImageBrief, HookVariant, ContentPillar, Platform, MediaType
+from ..models import (
+    PostContent, ImageBrief, HookVariant, BreakoutPattern,
+    ContentPillar, Platform, MediaType,
+)
 from . import psychology
 from .client import get_client, make_cached_system_block
 
@@ -86,6 +89,7 @@ def generate_caption(
     week_theme: Optional[str] = None,
     model: str = "claude-opus-4-8",
     extra_guidance: Optional[str] = None,
+    winning_patterns: Optional[list[BreakoutPattern]] = None,
 ) -> PostContent:
     client = get_client(api_key)
     pillar_config = brand_config.get_pillar(pillar.value)
@@ -109,6 +113,7 @@ def generate_caption(
         hook_types_text=psychology.render_hook_types(),
         banned_tactics=", ".join(psy.banned_tactics),
         hook_variants=eng.hook_variants,
+        winning_patterns=winning_patterns or [],
     )
     if extra_guidance:
         user_prompt += f"\n\n## 개선 지시 (이전 초안 평가 반영)\n{extra_guidance}"
