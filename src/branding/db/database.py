@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS posts (
     created_at     DATETIME NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS settings_store (
+    key         TEXT PRIMARY KEY,
+    value       TEXT,
+    updated_at  DATETIME NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS token_store (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     platform      TEXT NOT NULL UNIQUE,

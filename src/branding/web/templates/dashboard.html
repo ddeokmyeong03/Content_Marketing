@@ -73,6 +73,7 @@
   <button data-tab="queue">검토 큐</button>
   <button data-tab="growth">성장 분석</button>
   <button data-tab="patterns">승리 공식</button>
+  <button data-tab="control">설정·실행</button>
 </nav>
 <main id="view"></main>
 <div class="drawer" id="drawer"></div>
@@ -158,8 +159,53 @@ const tabs = {
       <div class="muted" style="margin-top:6px">레버: ${(p.psychology_levers||[]).join(', ')}</div>
       ${p.spread_hypothesis?`<div class="muted" style="margin-top:4px">확산: ${p.spread_hypothesis}</div>`:''}
     </div>`).join('');
+  },
+  async control(){
+    const cfg=await api('/config');
+    const labels={anthropic_api_key:'Anthropic API 키',meta_access_token:'Meta/Threads 액세스 토큰',
+      meta_app_secret:'Meta App Secret',meta_ig_user_id:'Instagram 사용자 ID',
+      meta_threads_user_id:'Threads 사용자 ID',meta_app_id:'Meta App ID',notify_webhook_url:'알림 Webhook URL'};
+    const rowsHtml=Object.entries(cfg).map(([k,v])=>{
+      const cur=v.set?(v.secret?`<span class="hi">등록됨 (${v.masked})</span>`:`<span class="hi">${v.value}</span>`):'<span class="muted">미설정</span>';
+      return `<div style="margin:8px 0">
+        <div class="muted" style="font-size:12px">${labels[k]} — ${cur}</div>
+        <input data-k="${k}" type="${v.secret?'password':'text'}" placeholder="${v.set?'변경하려면 입력':'값 입력'}"
+          style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px;margin-top:3px"/>
+      </div>`;
+    }).join('');
+    view.innerHTML=`
+      <div class="card"><h3 style="margin-top:0">수동 실행 (수집 → 분석 → 생성 → 발행)</h3>
+        <button class="act" onclick="runAct('collect','📥 성과 수집 중…')">📥 성과 수집</button>
+        <button class="act" onclick="runAct('analyze','🔍 브레이크아웃 역설계 중…')">🔍 분석(역설계)</button>
+        <button class="act" onclick="runAct('generate','✨ 주간 콘텐츠 생성 중…')">✨ 콘텐츠 생성</button>
+        <button class="act" onclick="runAct('publish-due','🚀 발행 중…')">🚀 예약 발행</button>
+        <div id="actres" style="margin-top:12px"></div>
+      </div>
+      <div class="card"><h3 style="margin-top:0">API 키 · 설정</h3>
+        <div class="muted" style="font-size:12px;margin-bottom:8px">값은 로컬 DB(settings_store)에 저장되어 .env보다 우선 적용됩니다. 빈 칸은 기존 값 유지.</div>
+        ${rowsHtml}
+        <button class="act" onclick="saveCfg()" style="margin-top:8px">저장</button>
+        <span id="cfgres" class="muted" style="margin-left:10px"></span>
+      </div>`;
   }
 };
+
+async function runAct(name,busy){
+  const el=document.getElementById('actres');
+  el.innerHTML=`<span class="muted">${busy}</span>`;
+  try{const r=await post('/actions/'+name);
+    el.innerHTML=r.ok?`<span class="hi">✓ ${r.message}</span>`:`<span class="lo">✗ ${r.error}</span>`;
+  }catch(e){el.innerHTML=`<span class="lo">✗ ${e.message}</span>`;}
+}
+async function saveCfg(){
+  const payload={};
+  document.querySelectorAll('#view input[data-k]').forEach(i=>{if(i.value.trim())payload[i.dataset.k]=i.value.trim();});
+  const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const j=await r.json();
+  document.getElementById('cfgres').innerHTML=`<span class="hi">저장됨 (${(j.changed||[]).length}개)</span>`;
+  tabs.control();
+}
+window.runAct=runAct; window.saveCfg=saveCfg;
 
 async function openPost(id){
   const p=await api('/posts/'+id);

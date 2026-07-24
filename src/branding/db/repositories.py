@@ -207,6 +207,38 @@ class PlanRepository:
         )
 
 
+class SettingsStore:
+    """웹에서 등록한 런타임 설정(키·ID) 저장 (key-value). .env보다 우선 적용."""
+
+    def __init__(self, db_path: str | Path):
+        self.db_path = db_path
+
+    def _conn(self) -> sqlite3.Connection:
+        return get_connection(self.db_path)
+
+    def set(self, key: str, value: str) -> None:
+        conn = self._conn()
+        conn.execute(
+            """INSERT INTO settings_store (key, value, updated_at) VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at""",
+            (key, value, now_utc().isoformat()),
+        )
+        conn.commit()
+        conn.close()
+
+    def get(self, key: str) -> Optional[str]:
+        conn = self._conn()
+        row = conn.execute("SELECT value FROM settings_store WHERE key=?", (key,)).fetchone()
+        conn.close()
+        return row["value"] if row else None
+
+    def all(self) -> dict[str, str]:
+        conn = self._conn()
+        rows = conn.execute("SELECT key, value FROM settings_store").fetchall()
+        conn.close()
+        return {r["key"]: r["value"] for r in rows if r["value"]}
+
+
 class TokenRepository:
     """Meta/Threads 액세스 토큰 영속화. 토큰 자동 갱신 시 사용."""
 

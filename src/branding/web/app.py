@@ -16,12 +16,39 @@ from ..config import get_settings, load_brand_config
 from ..config.settings import Settings
 from ..db import (
     AccountMetricsRepository, BreakoutPatternRepository, MetricsRepository,
-    PlanRepository, PostRepository, init_db,
+    PlanRepository, PostRepository, SettingsStore, init_db,
 )
+from ..insights import InsightsService
 from ..models import PostStatus
 from ..models.enums import Platform
+from ..publisher import PublishService
+from ..services import generate_week
 
 TEMPLATE = Path(__file__).parent / "templates" / "dashboard.html"
+
+# 웹에서 등록 가능한 설정 필드 (secret=마스킹 표시)
+CONFIG_FIELDS = {
+    "anthropic_api_key": True,
+    "meta_access_token": True,
+    "meta_app_secret": True,
+    "meta_ig_user_id": False,
+    "meta_threads_user_id": False,
+    "meta_app_id": False,
+    "notify_webhook_url": False,
+}
+
+
+def resolve_settings(base: Settings, store: SettingsStore) -> Settings:
+    """.env 기반 Settings에 웹 등록값(settings_store)을 덮어써 반환."""
+    overrides = {
+        k: v for k, v in store.all().items()
+        if k in Settings.model_fields and v
+    }
+    return base.model_copy(update=overrides) if overrides else base
+
+
+def _mask(val: str) -> str:
+    return f"{val[:4]}…{val[-3:]}" if len(val) > 9 else "****"
 
 
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
@@ -165,6 +192,79 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             }
             for p in patterns.top(limit=limit)
         ]
+
+    store = SettingsStore(settings.db_path)
+
+    def _resolved() -> Settings:
+        return resolve_settings(settings, store)
+
+    @app.get("/api/config")
+    def get_config() -> dict:
+        saved = store.all()
+        out = {}
+        for name, secret in CONFIG_FIELDS.items():
+            val = saved.get(name) or getattr(settings, name, "") or ""
+            if not val:
+                out[name] = {"set": False, "secret": secret}
+            elif secret:
+                out[name] = {"set": True, "secret": True, "masked": _mask(val)}
+            else:
+                out[name] = {"set": True, "secret": False, "value": val}
+        return out
+
+    @app.post("/api/config")
+    def set_config(payload: dict) -> dict:
+        changed = []
+        for k, v in (payload or {}).items():
+            if k in CONFIG_FIELDS and isinstance(v, str) and v.strip():
+                store.set(k, v.strip())
+                changed.append(k)
+        return {"ok": True, "changed": changed}
+
+    # --- 수동 실행 액션 (수집 → 분석 → 생성 → 발행) ---
+
+    @app.post("/api/actions/collect")
+    def act_collect() -> dict:
+        try:
+            posts, accounts = InsightsService(_resolved()).sync_all()
+            return {"ok": True, "message": f"게시물 {len(posts)}건 · 계정 {len(accounts)}건 수집"}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": str(e)}
+
+    @app.post("/api/actions/analyze")
+    def act_analyze() -> dict:
+        rs = _resolved()
+        if not rs.anthropic_api_key:
+            return {"ok": False, "error": "Anthropic API 키가 없습니다. 설정에서 등록하세요."}
+        try:
+            brand_cfg = load_brand_config(rs.brand_config_path)
+            pats = BreakoutService(rs).deconstruct_new(
+                brand_cfg, rs.anthropic_api_key, model=rs.anthropic_model, limit=5,
+            )
+            return {"ok": True, "message": f"승리 공식 {len(pats)}개 도출"}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": str(e)}
+
+    @app.post("/api/actions/generate")
+    def act_generate() -> dict:
+        rs = _resolved()
+        if not rs.anthropic_api_key:
+            return {"ok": False, "error": "Anthropic API 키가 없습니다. 설정에서 등록하세요."}
+        try:
+            brand_cfg = load_brand_config(rs.brand_config_path)
+            res = generate_week(rs, brand_cfg, with_captions=True)
+            return {"ok": True, "message": f"'{res.plan.theme_ko}' — {len(res.posts)}개 생성"}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": str(e)}
+
+    @app.post("/api/actions/publish-due")
+    def act_publish() -> dict:
+        try:
+            outs = PublishService(_resolved()).run_pending()
+            ok = sum(1 for o in outs if o.success)
+            return {"ok": True, "message": f"발행 {ok}/{len(outs)}건"}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": str(e)}
 
     @app.get("/api/brand")
     def brand() -> dict:
