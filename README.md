@@ -39,6 +39,7 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 | `branding insights external` | 외부/경쟁사 바이럴을 역설계해 승리 공식에 추가 |
 | `branding serve publish-once` | 예약 지난 승인 게시물 1회 발행 |
 | `branding serve run` | 스케줄러 데몬 (발행/주간생성/토큰갱신/성과수집/검토알림) |
+| `branding web run` | 운영 대시보드 (웹 UI) — 검토 승인·성장 분석·승리 공식 |
 
 ## 스케줄러 잡
 

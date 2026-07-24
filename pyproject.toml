@@ -26,12 +26,17 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
 ]
+web = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+]
 
 [project.scripts]
 branding = "branding.cli.main:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/branding"]
+artifacts = ["*.html", "*.txt"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
