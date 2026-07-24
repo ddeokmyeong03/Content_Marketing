@@ -109,6 +109,45 @@ def breakouts(
     )
 
 
+@app.command("attribution")
+def attribution(
+    days: int = typer.Option(30, "--days", "-d", help="귀인 기간(일)"),
+    limit: int = typer.Option(10, "--limit", "-n", help="플랫폼별 표시 개수"),
+):
+    """계정 팔로워 성장을 게시물에 귀속 ('이 글이 데려온 팔로워')."""
+    settings = get_settings()
+    init_db(settings.db_path)
+    groups = BreakoutService(settings).attribute_growth(days=days)
+    if not groups:
+        console.print("[dim]귀인할 데이터가 없습니다. insights sync 후 다시 시도하세요.[/dim]")
+        return
+    for g in groups:
+        growth = "데이터 부족" if g.follower_growth is None else f"+{g.follower_growth}"
+        console.print(
+            f"\n[bold cyan]{g.platform.value}[/bold cyan] "
+            f"— 최근 {days}일 팔로워 성장 [green]{growth}[/green]"
+        )
+        if g.follower_growth is None:
+            console.print("  [dim]스냅샷이 2개 이상 쌓여야 귀인이 가능합니다.[/dim]")
+            continue
+        table = Table(box=box.SIMPLE)
+        table.add_column("추정 유입", justify="right", width=8)
+        table.add_column("방식", width=8)
+        table.add_column("직접팔로우", justify="right", width=9)
+        table.add_column("주제", width=36)
+        for row in g.rows[:limit]:
+            table.add_row(
+                f"{row.result.attributed_followers}",
+                row.result.method,
+                str(row.result.direct_follows),
+                (row.post.topic or "")[:34],
+            )
+        console.print(table)
+    console.print(
+        "\n[dim]direct=게시물 팔로우 지표 기반(IG) · modeled=상호작용 대리 분배(Threads)[/dim]"
+    )
+
+
 @app.command("deconstruct")
 def deconstruct(
     weeks: int = typer.Option(8, "--weeks", "-w", help="분석 기간(주)"),

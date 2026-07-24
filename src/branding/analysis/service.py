@@ -14,6 +14,7 @@ from ..db import (
 from ..models import BreakoutPattern, Post
 from ..models.enums import Platform, PostStatus
 from ..utils.time import now_utc
+from .attribution import AttributionResult, PostAttrInput, attribute
 from .breakout import BreakoutResult, MetricInput, detect_breakouts
 
 logger = logging.getLogger("branding.analysis")
@@ -23,6 +24,19 @@ logger = logging.getLogger("branding.analysis")
 class BreakoutRow:
     result: BreakoutResult
     post: Post
+
+
+@dataclass
+class AttributionRow:
+    result: AttributionResult
+    post: Post
+
+
+@dataclass
+class PlatformAttribution:
+    platform: Platform
+    follower_growth: Optional[int]   # None = 스냅샷 부족
+    rows: list[AttributionRow]
 
 
 class BreakoutService:
@@ -86,6 +100,36 @@ class BreakoutService:
 
     def breakouts_only(self, weeks: int = 8, z_threshold: float = 2.5) -> list[BreakoutRow]:
         return [r for r in self.analyze(weeks, z_threshold) if r.result.is_breakout]
+
+    def attribute_growth(self, days: int = 30) -> list[PlatformAttribution]:
+        """기간 내 계정 팔로워 순증가를 게시물에 귀속 (플랫폼별)."""
+        since = now_utc() - timedelta(days=days)
+        published = [
+            p
+            for p in self.post_repo.list_by_status(PostStatus.PUBLISHED)
+            if p.meta_post_id and p.published_at and p.published_at >= since
+        ]
+        posts_by_id = {p.id: p for p in published}
+
+        by_platform: dict[Platform, list[PostAttrInput]] = {}
+        for post in published:
+            metric = self.metrics_repo.latest_for_post(post.id)
+            if metric is None:
+                continue
+            interactions = metric.total_interactions or (
+                metric.likes + metric.comments + metric.shares + metric.saved
+            )
+            by_platform.setdefault(post.platform, []).append(
+                PostAttrInput(post_id=post.id, follows=metric.follows, interactions=interactions)
+            )
+
+        out: list[PlatformAttribution] = []
+        for platform, inputs in by_platform.items():
+            growth = self.account_repo.follower_growth(platform, days=days)
+            results = attribute(inputs, growth or 0)
+            rows = [AttributionRow(result=r, post=posts_by_id[r.post_id]) for r in results]
+            out.append(PlatformAttribution(platform=platform, follower_growth=growth, rows=rows))
+        return out
 
     def deconstruct_new(
         self,

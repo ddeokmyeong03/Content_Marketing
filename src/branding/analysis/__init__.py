@@ -5,7 +5,10 @@ from .breakout import (
     compute_rates,
     WEIGHTS,
 )
-from .service import BreakoutService, BreakoutRow
+from .attribution import AttributionResult, PostAttrInput, attribute
+from .service import (
+    BreakoutService, BreakoutRow, AttributionRow, PlatformAttribution,
+)
 
 __all__ = [
     "BreakoutResult",
@@ -13,6 +16,11 @@ __all__ = [
     "detect_breakouts",
     "compute_rates",
     "WEIGHTS",
+    "AttributionResult",
+    "PostAttrInput",
+    "attribute",
     "BreakoutService",
     "BreakoutRow",
+    "AttributionRow",
+    "PlatformAttribution",
 ]

@@ -35,6 +35,7 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 | `branding insights breakouts` | 팔로워 대비 압도적으로 뜬 게시물 탐지 |
 | `branding insights deconstruct` | 브레이크아웃을 AI로 역설계 → 승리 공식 저장 |
 | `branding insights patterns` | 저장된 승리 공식 라이브러리 확인 |
+| `branding insights attribution` | 팔로워 성장을 게시물에 귀속 (유입 정량화) |
 | `branding serve publish-once` | 예약 지난 승인 게시물 1회 발행 |
 | `branding serve run` | 스케줄러 데몬 (발행/주간생성/토큰갱신/성과수집/검토알림) |
 
