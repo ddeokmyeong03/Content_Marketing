@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -5,6 +7,18 @@ from branding.config.settings import Settings
 from branding.db import SettingsStore, init_db
 from branding.web import create_app
 from branding.web.app import resolve_settings
+
+
+def _run_job(c, name, timeout=5.0):
+    """액션 잡을 시작하고 종료될 때까지 폴링해 최종 상태를 반환."""
+    job_id = c.post(f"/api/actions/{name}").json()["job_id"]
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        j = c.get(f"/api/jobs/{job_id}").json()
+        if j["status"] != "running":
+            return j
+        time.sleep(0.05)
+    raise AssertionError("잡이 시간 내에 끝나지 않음")
 
 
 @pytest.fixture
@@ -56,23 +70,33 @@ def test_config_post_ignores_blank_and_unknown(ctx):
     assert r["changed"] == ["meta_app_id"]
 
 
-# --- 액션 엔드포인트 (키 없이 graceful) ---
+# --- 액션 엔드포인트 (백그라운드 잡) ---
 
-def test_generate_action_without_key(ctx):
+def test_generate_job_without_key_errors(ctx):
     c, _ = ctx
-    r = c.post("/api/actions/generate").json()
-    assert r["ok"] is False
-    assert "키" in r["error"]
+    j = _run_job(c, "generate")
+    assert j["status"] == "error"
+    assert "키" in j["error"]
 
 
-def test_collect_action_runs_without_published(ctx):
+def test_collect_job_runs_without_published(ctx):
     c, _ = ctx
-    r = c.post("/api/actions/collect").json()
-    assert r["ok"] is True          # 발행 게시물이 없어도 성공(0건)
+    j = _run_job(c, "collect")
+    assert j["status"] == "done"        # 발행 게시물이 없어도 성공(0건)
 
 
-def test_generate_action_uses_db_registered_key(ctx, monkeypatch):
-    """DB에 키를 등록하면 액션이 그 키로 동작(생성 함수는 목업)."""
+def test_unknown_action_404(ctx):
+    c, _ = ctx
+    assert c.post("/api/actions/bogus").status_code == 404
+
+
+def test_job_status_404(ctx):
+    c, _ = ctx
+    assert c.get("/api/jobs/nonexistent").status_code == 404
+
+
+def test_generate_job_uses_db_registered_key(ctx, monkeypatch):
+    """DB에 키를 등록하면 잡이 그 키로 동작(생성 함수는 목업)."""
     c, s = ctx
     c.post("/api/config", json={"anthropic_api_key": "sk-db"})
 
@@ -87,6 +111,23 @@ def test_generate_action_uses_db_registered_key(ctx, monkeypatch):
         return R()
 
     monkeypatch.setattr(webapp, "generate_week", fake_generate)
-    r = c.post("/api/actions/generate").json()
-    assert r["ok"] is True
+    j = _run_job(c, "generate")
+    assert j["status"] == "done"
     assert captured["key"] == "sk-db"       # DB 등록 키가 서비스에 전달됨
+    assert "2개 생성" in j["result"]["message"]
+
+
+def test_growth_series_endpoint(ctx):
+    c, s = ctx
+    from datetime import timedelta
+    from branding.db import AccountMetricsRepository
+    from branding.models import AccountMetric
+    from branding.models.enums import Platform
+    from branding.utils.time import now_utc
+    ar = AccountMetricsRepository(s.db_path)
+    ar.save_snapshot(AccountMetric(platform=Platform.INSTAGRAM, followers_count=1000,
+                                   fetched_at=now_utc() - timedelta(days=10)))
+    ar.save_snapshot(AccountMetric(platform=Platform.INSTAGRAM, followers_count=1120))
+    data = c.get("/api/growth-series?platform=instagram").json()
+    assert len(data["points"]) == 2
+    assert data["points"][-1]["followers"] == 1120

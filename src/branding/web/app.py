@@ -23,6 +23,7 @@ from ..models import PostStatus
 from ..models.enums import Platform
 from ..publisher import PublishService
 from ..services import generate_week
+from .jobs import JobManager
 
 TEMPLATE = Path(__file__).parent / "templates" / "dashboard.html"
 
@@ -57,6 +58,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     init_db(settings.db_path)
 
     app = FastAPI(title="브랜딩 운영 대시보드", docs_url="/api/docs")
+    jobs = JobManager()
     posts = PostRepository(settings.db_path)
     plans = PlanRepository(settings.db_path)
     accounts = AccountMetricsRepository(settings.db_path)
@@ -221,50 +223,77 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 changed.append(k)
         return {"ok": True, "changed": changed}
 
-    # --- 수동 실행 액션 (수집 → 분석 → 생성 → 발행) ---
+    # --- 수동 실행 액션 (백그라운드 잡: 수집 → 분석 → 생성 → 발행) ---
 
-    @app.post("/api/actions/collect")
-    def act_collect() -> dict:
-        try:
-            posts, accounts = InsightsService(_resolved()).sync_all()
-            return {"ok": True, "message": f"게시물 {len(posts)}건 · 계정 {len(accounts)}건 수집"}
-        except Exception as e:  # noqa: BLE001
-            return {"ok": False, "error": str(e)}
+    def _body_collect(report):
+        report("성과 수집 중…", 0.2)
+        posts, accounts = InsightsService(_resolved()).sync_all()
+        return {"message": f"게시물 {len(posts)}건 · 계정 {len(accounts)}건 수집"}
 
-    @app.post("/api/actions/analyze")
-    def act_analyze() -> dict:
+    def _body_analyze(report):
         rs = _resolved()
         if not rs.anthropic_api_key:
-            return {"ok": False, "error": "Anthropic API 키가 없습니다. 설정에서 등록하세요."}
-        try:
-            brand_cfg = load_brand_config(rs.brand_config_path)
-            pats = BreakoutService(rs).deconstruct_new(
-                brand_cfg, rs.anthropic_api_key, model=rs.anthropic_model, limit=5,
-            )
-            return {"ok": True, "message": f"승리 공식 {len(pats)}개 도출"}
-        except Exception as e:  # noqa: BLE001
-            return {"ok": False, "error": str(e)}
+            raise RuntimeError("Anthropic API 키가 없습니다. 설정에서 등록하세요.")
+        report("브레이크아웃 역설계 중…", 0.2)
+        brand_cfg = load_brand_config(rs.brand_config_path)
+        pats = BreakoutService(rs).deconstruct_new(
+            brand_cfg, rs.anthropic_api_key, model=rs.anthropic_model, limit=5,
+        )
+        return {"message": f"승리 공식 {len(pats)}개 도출"}
 
-    @app.post("/api/actions/generate")
-    def act_generate() -> dict:
+    def _body_generate(report):
         rs = _resolved()
         if not rs.anthropic_api_key:
-            return {"ok": False, "error": "Anthropic API 키가 없습니다. 설정에서 등록하세요."}
-        try:
-            brand_cfg = load_brand_config(rs.brand_config_path)
-            res = generate_week(rs, brand_cfg, with_captions=True)
-            return {"ok": True, "message": f"'{res.plan.theme_ko}' — {len(res.posts)}개 생성"}
-        except Exception as e:  # noqa: BLE001
-            return {"ok": False, "error": str(e)}
+            raise RuntimeError("Anthropic API 키가 없습니다. 설정에서 등록하세요.")
+        brand_cfg = load_brand_config(rs.brand_config_path)
 
-    @app.post("/api/actions/publish-due")
-    def act_publish() -> dict:
+        def progress(i, total, topic):
+            report(f"[{i}/{total}] {topic[:24]} 생성 중…", 0.1 + 0.85 * i / max(total, 1))
+
+        report("주간 계획 생성 중…", 0.05)
+        res = generate_week(rs, brand_cfg, with_captions=True, progress=progress)
+        return {"message": f"'{res.plan.theme_ko}' — {len(res.posts)}개 생성"}
+
+    def _body_publish(report):
+        report("예약 게시물 발행 중…", 0.3)
+        outs = PublishService(_resolved()).run_pending()
+        ok = sum(1 for o in outs if o.success)
+        return {"message": f"발행 {ok}/{len(outs)}건"}
+
+    _ACTIONS = {
+        "collect": _body_collect, "analyze": _body_analyze,
+        "generate": _body_generate, "publish-due": _body_publish,
+    }
+
+    @app.post("/api/actions/{name}")
+    def start_action(name: str) -> dict:
+        body = _ACTIONS.get(name)
+        if not body:
+            raise HTTPException(404, f"알 수 없는 액션: {name}")
+        job = jobs.start(name, body)
+        return {"job_id": job.id, "status": job.status}
+
+    @app.get("/api/jobs/{job_id}")
+    def job_status(job_id: str) -> dict:
+        job = jobs.get(job_id)
+        if not job:
+            raise HTTPException(404, "잡을 찾을 수 없습니다.")
+        return job.to_dict()
+
+    @app.get("/api/growth-series")
+    def growth_series(platform: str = "instagram", days: int = 90) -> dict:
         try:
-            outs = PublishService(_resolved()).run_pending()
-            ok = sum(1 for o in outs if o.success)
-            return {"ok": True, "message": f"발행 {ok}/{len(outs)}건"}
-        except Exception as e:  # noqa: BLE001
-            return {"ok": False, "error": str(e)}
+            pf = Platform(platform)
+        except ValueError:
+            raise HTTPException(400, f"알 수 없는 플랫폼: {platform}")
+        hist = accounts.history(pf, days=days)
+        return {
+            "platform": platform,
+            "points": [
+                {"t": m.fetched_at.isoformat(), "followers": m.followers_count, "reach": m.reach}
+                for m in hist
+            ],
+        }
 
     @app.get("/api/brand")
     def brand() -> dict:

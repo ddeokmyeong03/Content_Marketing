@@ -58,6 +58,12 @@
   .x{float:right;cursor:pointer;color:var(--muted);font-size:20px;line-height:1}
   .empty{color:var(--muted);padding:24px 0;text-align:center}
   .tag{color:var(--brand);font-size:12px;margin-right:6px}
+  .bar{background:var(--panel2);border:1px solid var(--line);border-radius:999px;height:8px;
+    margin-top:8px;overflow:hidden}
+  .bar .fill{height:100%;background:var(--good);transition:width .3s;border-radius:999px}
+  .chartcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
+  .chartcard h4{margin:0 0 2px;font-size:14px}
+  svg circle{cursor:pointer}
 </style>
 </head>
 <body>
@@ -130,7 +136,16 @@ const tabs = {
     document.getElementById('st').onchange=render; render();
   },
   async growth(){
-    const [bo,at]=await Promise.all([api('/breakouts'),api('/attribution')]);
+    const [bo,at,igs,ths]=await Promise.all([
+      api('/breakouts'),api('/attribution'),
+      api('/growth-series?platform=instagram').catch(()=>({points:[]})),
+      api('/growth-series?platform=threads').catch(()=>({points:[]}))]);
+    let charts='';
+    for(const [name,s] of [['instagram',igs],['threads',ths]]){
+      if(s.points && s.points.length){
+        charts+=`<div class="chartcard"><h4>${name} 팔로워 추이</h4>${lineChart(s.points,1040,140)}</div>`;
+      }
+    }
     const breaks=bo.filter(b=>b.is_breakout);
     let bhtml=breaks.length?`<table><thead><tr><th>점수</th><th></th><th>주제</th><th>이상치 지표</th></tr></thead><tbody>${
       breaks.map(b=>`<tr><td class="score hi">${b.score}</td><td class="rocket">🚀</td><td>${(b.topic||'').slice(0,40)}</td><td class="muted">${b.reasons.join(', ')}</td></tr>`).join('')}</tbody></table>`
@@ -145,7 +160,8 @@ const tabs = {
       }
       ahtml+='</div>';
     }
-    view.innerHTML=`<div class="card"><h3 style="margin-top:0">🚀 브레이크아웃</h3>${bhtml}</div>
+    view.innerHTML=`${charts}
+      <div class="card"><h3 style="margin-top:0">🚀 브레이크아웃</h3>${bhtml}</div>
       <h3>성장 귀인 (이 글이 데려온 팔로워)</h3>${ahtml||'<div class="empty">계정 스냅샷 2개 이상 필요.</div>'}`;
   },
   async patterns(){
@@ -190,11 +206,44 @@ const tabs = {
   }
 };
 
+function lineChart(points,w,h){
+  if(!points || points.length<2)
+    return '<div class="muted">스냅샷이 2개 이상 쌓이면 추이가 표시됩니다.</div>';
+  const vals=points.map(p=>p.followers), min=Math.min(...vals), max=Math.max(...vals);
+  const pad=10, iw=w-pad*2, ih=h-pad*2;
+  const X=i=>pad+iw*i/(points.length-1);
+  const Y=v=>pad+ih*(1-(v-min)/((max-min)||1));
+  const line=points.map((p,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(p.followers).toFixed(1)}`).join(' ');
+  const area=`M${X(0).toFixed(1)},${(h-pad).toFixed(1)} `+points.map((p,i)=>`L${X(i).toFixed(1)},${Y(p.followers).toFixed(1)}`).join(' ')+` L${X(points.length-1).toFixed(1)},${(h-pad).toFixed(1)} Z`;
+  const dots=points.map((p,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(p.followers).toFixed(1)}" r="3.5" fill="var(--good)"><title>${new Date(p.t).toLocaleDateString()} · ${p.followers.toLocaleString()} 팔로워</title></circle>`).join('');
+  const d=new Date(points[0].t).toLocaleDateString(), d2=new Date(points[points.length-1].t).toLocaleDateString();
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">
+      <path d="${area}" fill="var(--good)" opacity="0.08"/>
+      <path d="${line}" fill="none" stroke="var(--good)" stroke-width="2" stroke-linejoin="round"/>${dots}
+    </svg>
+    <div class="muted" style="font-size:12px">${d} → ${d2} · ${min.toLocaleString()} ~ ${max.toLocaleString()} 팔로워</div>`;
+}
+
 async function runAct(name,busy){
   const el=document.getElementById('actres');
-  el.innerHTML=`<span class="muted">${busy}</span>`;
-  try{const r=await post('/actions/'+name);
-    el.innerHTML=r.ok?`<span class="hi">✓ ${r.message}</span>`:`<span class="lo">✗ ${r.error}</span>`;
+  el.innerHTML=`<div class="muted">${busy}</div><div class="bar"><div class="fill" style="width:5%"></div></div>`;
+  try{
+    const {job_id}=await post('/actions/'+name);
+    pollJob(job_id, el);
+  }catch(e){el.innerHTML=`<span class="lo">✗ ${e.message}</span>`;}
+}
+async function pollJob(id, el){
+  try{
+    const j=await api('/jobs/'+id);
+    const pct=Math.round((j.progress||0)*100);
+    if(j.status==='running'){
+      el.innerHTML=`<div class="muted">${j.message||'실행 중…'} (${pct}%)</div><div class="bar"><div class="fill" style="width:${Math.max(pct,5)}%"></div></div>`;
+      setTimeout(()=>pollJob(id,el),1200);
+    }else if(j.status==='done'){
+      el.innerHTML=`<span class="hi">✓ ${(j.result&&j.result.message)||'완료'}</span>`;
+    }else{
+      el.innerHTML=`<span class="lo">✗ ${j.error}</span>`;
+    }
   }catch(e){el.innerHTML=`<span class="lo">✗ ${e.message}</span>`;}
 }
 async function saveCfg(){
