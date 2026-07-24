@@ -3,6 +3,7 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
+from ...analysis import BreakoutService
 from ...config import get_settings, load_brand_config
 from ...db import AccountMetricsRepository, MetricsRepository, init_db
 from ...insights import InsightsService
@@ -62,6 +63,50 @@ def account_growth(
         )
     if not found:
         console.print("[dim]계정 스냅샷이 없습니다. branding insights sync 를 먼저 실행하세요.[/dim]")
+
+
+@app.command("breakouts")
+def breakouts(
+    weeks: int = typer.Option(8, "--weeks", "-w", help="분석 기간(주)"),
+    threshold: float = typer.Option(2.5, "--threshold", "-z", help="브레이크아웃 z 임계값"),
+    all_posts: bool = typer.Option(False, "--all", help="브레이크아웃 외 전체 점수도 표시"),
+):
+    """팔로워 대비 압도적으로 뜬 게시물(브레이크아웃) 탐지."""
+    settings = get_settings()
+    init_db(settings.db_path)
+    svc = BreakoutService(settings)
+    rows = svc.analyze(weeks=weeks, z_threshold=threshold)
+    if not all_posts:
+        rows = [r for r in rows if r.result.is_breakout]
+    if not rows:
+        console.print(
+            "[dim]브레이크아웃이 없습니다. 성과 데이터가 충분히 쌓였는지 "
+            "(insights sync) 확인하세요.[/dim]"
+        )
+        return
+
+    table = Table(title=f"브레이크아웃 (최근 {weeks}주, z≥{threshold})", box=box.ROUNDED)
+    table.add_column("점수", justify="right", width=6)
+    table.add_column("", width=3)
+    table.add_column("플랫폼", width=9)
+    table.add_column("주제", width=30)
+    table.add_column("이상치 지표", width=28)
+    for r in rows:
+        flag = "🚀" if r.result.is_breakout else ""
+        reasons = ", ".join(r.result.reasons) or "-"
+        color = "green" if r.result.is_breakout else "dim"
+        table.add_row(
+            f"[{color}]{r.result.breakout_score}[/{color}]",
+            flag,
+            r.post.platform.value,
+            (r.post.topic or "")[:28],
+            reasons,
+        )
+    console.print(table)
+    console.print(
+        "[dim]이상치 지표: reach_rate(확산) · share_rate · follow_rate(성장) · "
+        "save_rate · interaction_rate[/dim]"
+    )
 
 
 @app.command("top")

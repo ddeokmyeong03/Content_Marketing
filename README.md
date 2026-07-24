@@ -32,6 +32,7 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 | `branding insights sync` | 발행 게시물 + 계정 성과 수집 |
 | `branding insights top` | 참여율 상위 성과 콘텐츠 확인 |
 | `branding insights account` | 계정 팔로워·성장 추이 (BGI 기반) |
+| `branding insights breakouts` | 팔로워 대비 압도적으로 뜬 게시물 탐지 |
 | `branding serve publish-once` | 예약 지난 승인 게시물 1회 발행 |
 | `branding serve run` | 스케줄러 데몬 (발행/주간생성/토큰갱신/성과수집/검토알림) |
 

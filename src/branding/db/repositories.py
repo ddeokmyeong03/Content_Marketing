@@ -441,3 +441,21 @@ class AccountMetricsRepository:
         if len(hist) < 2:
             return None
         return hist[-1].followers_count - hist[0].followers_count
+
+    def followers_at(self, platform: _Platform, when: datetime) -> Optional[int]:
+        """주어진 시점의 팔로워 수 (그 시점 이전 최신 스냅샷, 없으면 이후 최초)."""
+        conn = self._conn()
+        row = conn.execute(
+            """SELECT followers_count FROM account_metrics
+               WHERE platform=? AND fetched_at <= ?
+               ORDER BY fetched_at DESC LIMIT 1""",
+            (platform.value, when.isoformat()),
+        ).fetchone()
+        if row is None:
+            row = conn.execute(
+                """SELECT followers_count FROM account_metrics
+                   WHERE platform=? ORDER BY fetched_at ASC LIMIT 1""",
+                (platform.value,),
+            ).fetchone()
+        conn.close()
+        return row["followers_count"] if row else None
