@@ -78,6 +78,23 @@ CREATE TABLE IF NOT EXISTS account_metrics (
     views           INTEGER DEFAULT 0,
     raw_json        TEXT
 );
+
+CREATE TABLE IF NOT EXISTS breakout_patterns (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id           INTEGER REFERENCES posts(id),
+    detected_at       DATETIME NOT NULL,
+    breakout_score    REAL DEFAULT 0,
+    hook_type         TEXT,
+    psychology_levers TEXT,
+    format            TEXT,
+    topic_angle       TEXT,
+    structure_notes   TEXT,
+    emotional_trigger TEXT,
+    spread_hypothesis TEXT,
+    replicable_formula TEXT,
+    confidence        INTEGER DEFAULT 0,
+    metrics_snapshot  TEXT
+);
 """
 
 # 기존 DB에 신규 컬럼을 안전하게 추가하기 위한 마이그레이션

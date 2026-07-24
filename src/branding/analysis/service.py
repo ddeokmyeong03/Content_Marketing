@@ -6,9 +6,12 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Optional
 
+from ..config.brand_config import BrandConfig
 from ..config.settings import Settings
-from ..db import AccountMetricsRepository, MetricsRepository, PostRepository
-from ..models import Post
+from ..db import (
+    AccountMetricsRepository, BreakoutPatternRepository, MetricsRepository, PostRepository,
+)
+from ..models import BreakoutPattern, Post
 from ..models.enums import Platform, PostStatus
 from ..utils.time import now_utc
 from .breakout import BreakoutResult, MetricInput, detect_breakouts
@@ -83,3 +86,50 @@ class BreakoutService:
 
     def breakouts_only(self, weeks: int = 8, z_threshold: float = 2.5) -> list[BreakoutRow]:
         return [r for r in self.analyze(weeks, z_threshold) if r.result.is_breakout]
+
+    def deconstruct_new(
+        self,
+        brand: BrandConfig,
+        api_key: str,
+        weeks: int = 8,
+        z_threshold: float = 2.5,
+        model: str = "claude-opus-4-8",
+        limit: Optional[int] = None,
+        skip_existing: bool = True,
+    ) -> list[BreakoutPattern]:
+        """탐지된 브레이크아웃을 AI로 역설계해 승리 공식으로 저장.
+
+        이미 분석된 게시물은 기본적으로 건너뛴다(중복 방지·비용 절약).
+        """
+        from ..ai.deconstruct import deconstruct_breakout  # 지연 임포트(무거운 ai 패키지)
+
+        pattern_repo = BreakoutPatternRepository(self.settings.db_path)
+        rows = self.breakouts_only(weeks, z_threshold)
+        if limit is not None:
+            rows = rows[:limit]
+
+        saved: list[BreakoutPattern] = []
+        for row in rows:
+            if skip_existing and pattern_repo.exists_for_post(row.post.id):
+                continue
+            metric = self.metrics_repo.latest_for_post(row.post.id)
+            snapshot = {
+                "reach": metric.reach if metric else 0,
+                "likes": metric.likes if metric else 0,
+                "comments": metric.comments if metric else 0,
+                "shares": metric.shares if metric else 0,
+                "saved": metric.saved if metric else 0,
+                "follows": metric.follows if metric else 0,
+            }
+            pattern = deconstruct_breakout(
+                brand_config=brand,
+                api_key=api_key,
+                post=row.post,
+                breakout_score=row.result.breakout_score,
+                reasons=row.result.reasons,
+                metrics_snapshot=snapshot,
+                platform=row.post.platform,
+                model=model,
+            )
+            saved.append(pattern_repo.save(pattern))
+        return saved

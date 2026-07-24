@@ -44,7 +44,7 @@ breakout = z >= Z_THRESHOLD   # 기본 2.5~3.0
 |-------|------|-----------|
 | **P1** ✅ 데이터 기반 | 계정 스냅샷 + 포스트 지표 확장(profile_visits/follows/total_interactions) | `account_metrics` 테이블, `PostMetric` 확장, `InsightsService.sync_account` |
 | **P2** ✅ 탐지 | 이상치 점수·브레이크아웃 판정 (로버스트 z-score, MAD→std 폴백) | `analysis/breakout.py`, `analysis/service.py`, `insights breakouts` |
-| **P3** 역설계 | AI 구조 분해 → 승리 공식 | `analysis/deconstruct.py`, `breakout_patterns` 테이블 |
+| **P3** ✅ 역설계 | AI 구조 분해 → 승리 공식 저장 | `ai/deconstruct.py`, `breakout_patterns` 테이블, `insights deconstruct`/`patterns` |
 | **P4** 귀인 | 팔로워 급증 ↔ 게시물 상관 | `analysis/attribution.py` |
 | **P5** 반영 | 승리 공식·가중치를 plan/caption 프롬프트에 주입 | 기존 planner/caption 확장 |
 | **P6**(확장) | 외부/경쟁사 바이럴 반자동 분해 | 운영자 URL·샘플 투입 → AI 분해 |

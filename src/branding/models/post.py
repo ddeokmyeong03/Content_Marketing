@@ -106,6 +106,24 @@ class AccountMetric(BaseModel):
     raw: dict = Field(default_factory=dict)
 
 
+class BreakoutPattern(BaseModel):
+    """브레이크아웃 게시물의 AI 역설계 결과 — 재현 가능한 '승리 공식'."""
+    id: Optional[int] = None
+    post_id: int
+    breakout_score: float = 0.0
+    hook_type: str = ""
+    psychology_levers: list[str] = Field(default_factory=list)
+    format: str = ""
+    topic_angle: str = ""
+    structure_notes: str = ""
+    emotional_trigger: str = ""
+    spread_hypothesis: str = ""       # 왜 공유/저장/팔로우로 이어졌나
+    replicable_formula: str = ""      # 다음 콘텐츠에 주입할 재현 템플릿
+    confidence: int = 0               # 0-100
+    metrics_snapshot: dict = Field(default_factory=dict)
+    detected_at: datetime = Field(default_factory=now_utc)
+
+
 class ContentPlanTopic(BaseModel):
     pillar: ContentPillar
     topic: str

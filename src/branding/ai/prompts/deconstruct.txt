@@ -1,0 +1,36 @@
+아래는 이 계정에서 **팔로워 대비 압도적으로 뜬(브레이크아웃)** 게시물입니다.
+당신은 그로스 애널리스트입니다. 이 게시물이 **왜 떴고 어떻게 계정 성장으로 이어졌는지**를 역설계해,
+다음 콘텐츠에 재현할 수 있는 '승리 공식'으로 분해하세요.
+
+**플랫폼**: {{ platform }}
+**주제**: {{ topic }}
+**브레이크아웃 점수**: {{ breakout_score }}/100
+**이상치를 일으킨 지표**: {{ reasons }}
+(reach_rate=팔로워 밖 확산 / share_rate=공유 / follow_rate=신규 팔로우 / save_rate=저장 / interaction_rate=상호작용)
+
+**실제 지표**: 도달 {{ m.reach }}, 좋아요 {{ m.likes }}, 댓글 {{ m.comments }}, 공유 {{ m.shares }}, 저장 {{ m.saved }}, 팔로우 {{ m.follows }}
+
+---
+[채택 훅]
+{{ chosen_hook }}
+
+[캡션]
+{{ caption }}
+---
+
+## 분석 지침
+- **추측이 아니라 이 게시물의 실제 텍스트·지표에 근거**해 분해하세요.
+- 어떤 이상치 지표가 튀었는지에서 확산 메커니즘을 추론하세요.
+  (예: share_rate가 튀었다면 '공유를 부른 요소'가 핵심, follow_rate가 튀었다면 '팔로우 전환 요소'가 핵심)
+- replicable_formula는 **다음 콘텐츠에 그대로 적용 가능한 구체적 템플릿**으로 쓰세요.
+
+## 반환 (score_breakout_pattern 도구)
+- hook_type: 사용된 훅 유형
+- psychology_levers: 작동한 심리 레버 목록
+- format: 포맷 특성
+- topic_angle: 주제를 다룬 각도
+- structure_notes: 서사·구성 구조
+- emotional_trigger: 핵심 감정 트리거
+- spread_hypothesis: 왜 확산/성장으로 이어졌나 (이상치 지표 근거)
+- replicable_formula: 재현 템플릿
+- confidence: 이 분석의 신뢰도 (0-100)

@@ -6,6 +6,7 @@ import sqlite3
 
 from ..models import (
     Post, ContentPlan, ContentPlanTopic, PostStatus, PostContent, PostMetric, AccountMetric,
+    BreakoutPattern,
 )
 from ..models.enums import Platform as _Platform
 from ..models.enums import Platform, MediaType, ContentPillar
@@ -459,3 +460,79 @@ class AccountMetricsRepository:
             ).fetchone()
         conn.close()
         return row["followers_count"] if row else None
+
+
+class BreakoutPatternRepository:
+    """AI 역설계된 '승리 공식'(breakout_patterns) 저장·조회."""
+
+    def __init__(self, db_path: str | Path):
+        self.db_path = db_path
+
+    def _conn(self) -> sqlite3.Connection:
+        return get_connection(self.db_path)
+
+    def save(self, pattern: BreakoutPattern) -> BreakoutPattern:
+        conn = self._conn()
+        cur = conn.execute(
+            """INSERT INTO breakout_patterns
+               (post_id, detected_at, breakout_score, hook_type, psychology_levers,
+                format, topic_angle, structure_notes, emotional_trigger,
+                spread_hypothesis, replicable_formula, confidence, metrics_snapshot)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                pattern.post_id,
+                pattern.detected_at.isoformat(),
+                pattern.breakout_score,
+                pattern.hook_type,
+                json.dumps(pattern.psychology_levers, ensure_ascii=False),
+                pattern.format,
+                pattern.topic_angle,
+                pattern.structure_notes,
+                pattern.emotional_trigger,
+                pattern.spread_hypothesis,
+                pattern.replicable_formula,
+                pattern.confidence,
+                json.dumps(pattern.metrics_snapshot, ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+        result = pattern.model_copy(update={"id": cur.lastrowid})
+        conn.close()
+        return result
+
+    def _row(self, row: sqlite3.Row) -> BreakoutPattern:
+        return BreakoutPattern(
+            id=row["id"],
+            post_id=row["post_id"],
+            breakout_score=row["breakout_score"],
+            hook_type=row["hook_type"] or "",
+            psychology_levers=json.loads(row["psychology_levers"]) if row["psychology_levers"] else [],
+            format=row["format"] or "",
+            topic_angle=row["topic_angle"] or "",
+            structure_notes=row["structure_notes"] or "",
+            emotional_trigger=row["emotional_trigger"] or "",
+            spread_hypothesis=row["spread_hypothesis"] or "",
+            replicable_formula=row["replicable_formula"] or "",
+            confidence=row["confidence"] or 0,
+            metrics_snapshot=json.loads(row["metrics_snapshot"]) if row["metrics_snapshot"] else {},
+            detected_at=parse_dt(row["detected_at"]),
+        )
+
+    def exists_for_post(self, post_id: int) -> bool:
+        conn = self._conn()
+        row = conn.execute(
+            "SELECT 1 FROM breakout_patterns WHERE post_id=? LIMIT 1", (post_id,)
+        ).fetchone()
+        conn.close()
+        return row is not None
+
+    def top(self, limit: int = 10) -> list[BreakoutPattern]:
+        """신뢰도·브레이크아웃 점수 상위 승리 공식 (엔진 재주입용)."""
+        conn = self._conn()
+        rows = conn.execute(
+            """SELECT * FROM breakout_patterns
+               ORDER BY confidence DESC, breakout_score DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        conn.close()
+        return [self._row(r) for r in rows]

@@ -5,7 +5,7 @@ from rich import box
 
 from ...analysis import BreakoutService
 from ...config import get_settings, load_brand_config
-from ...db import AccountMetricsRepository, MetricsRepository, init_db
+from ...db import AccountMetricsRepository, BreakoutPatternRepository, MetricsRepository, init_db
 from ...insights import InsightsService
 from ...models.enums import Platform
 
@@ -107,6 +107,63 @@ def breakouts(
         "[dim]이상치 지표: reach_rate(확산) · share_rate · follow_rate(성장) · "
         "save_rate · interaction_rate[/dim]"
     )
+
+
+@app.command("deconstruct")
+def deconstruct(
+    weeks: int = typer.Option(8, "--weeks", "-w", help="분석 기간(주)"),
+    limit: int = typer.Option(5, "--limit", "-n", help="이번에 분석할 최대 개수"),
+):
+    """브레이크아웃 게시물을 AI로 역설계해 '승리 공식'으로 저장."""
+    settings = get_settings()
+    if not settings.anthropic_api_key:
+        console.print("[red]ANTHROPIC_API_KEY 가 설정되지 않았습니다.[/red]")
+        raise typer.Exit(1)
+    init_db(settings.db_path)
+    brand = load_brand_config(settings.brand_config_path)
+    svc = BreakoutService(settings)
+    with console.status("[bold green]브레이크아웃을 역설계하고 있습니다...[/bold green]"):
+        patterns = svc.deconstruct_new(
+            brand, settings.anthropic_api_key, weeks=weeks, limit=limit,
+            model=settings.anthropic_model,
+        )
+    if not patterns:
+        console.print("[dim]새로 역설계할 브레이크아웃이 없습니다. (insights breakouts로 확인)[/dim]")
+        return
+    console.print(f"[green]✓ {len(patterns)}개 승리 공식 도출[/green]")
+    for p in patterns:
+        console.print(Panel(
+            f"[bold]훅 유형:[/bold] {p.hook_type}\n"
+            f"[bold]심리 레버:[/bold] {', '.join(p.psychology_levers)}\n"
+            f"[bold]확산 가설:[/bold] {p.spread_hypothesis}\n"
+            f"[bold]재현 공식:[/bold] {p.replicable_formula}",
+            title=f"승리 공식 (post #{p.post_id}, 신뢰도 {p.confidence})",
+            border_style="magenta",
+        ))
+
+
+@app.command("patterns")
+def patterns(limit: int = typer.Option(10, "--limit", "-n", help="표시 개수")):
+    """저장된 승리 공식(역설계 결과) 확인."""
+    settings = get_settings()
+    init_db(settings.db_path)
+    rows = BreakoutPatternRepository(settings.db_path).top(limit=limit)
+    if not rows:
+        console.print("[dim]저장된 승리 공식이 없습니다. branding insights deconstruct 를 실행하세요.[/dim]")
+        return
+    table = Table(title="승리 공식 라이브러리", box=box.ROUNDED)
+    table.add_column("신뢰도", justify="right", width=6)
+    table.add_column("훅 유형", width=16)
+    table.add_column("심리 레버", width=24)
+    table.add_column("재현 공식", width=40)
+    for p in rows:
+        table.add_row(
+            str(p.confidence),
+            p.hook_type,
+            ", ".join(p.psychology_levers)[:22],
+            (p.replicable_formula or "")[:38],
+        )
+    console.print(table)
 
 
 @app.command("top")
