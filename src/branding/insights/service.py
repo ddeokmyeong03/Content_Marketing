@@ -14,8 +14,8 @@ from typing import Optional
 import httpx
 
 from ..config.settings import Settings
-from ..db import MetricsRepository, PostRepository, TokenRepository
-from ..models import Post, PostMetric
+from ..db import AccountMetricsRepository, MetricsRepository, PostRepository, TokenRepository
+from ..models import AccountMetric, Post, PostMetric
 from ..models.enums import Platform, PostStatus
 from ..publisher.base import GraphHTTP, MetaAPIError
 from ..utils.time import now_utc
@@ -49,12 +49,14 @@ class InsightsService:
         post_repo: Optional[PostRepository] = None,
         metrics_repo: Optional[MetricsRepository] = None,
         token_repo: Optional[TokenRepository] = None,
+        account_repo: Optional[AccountMetricsRepository] = None,
         transport: httpx.BaseTransport | None = None,
     ):
         self.settings = settings
         self.post_repo = post_repo or PostRepository(settings.db_path)
         self.metrics_repo = metrics_repo or MetricsRepository(settings.db_path)
         self.token_repo = token_repo or TokenRepository(settings.db_path)
+        self.account_repo = account_repo or AccountMetricsRepository(settings.db_path)
         self._transport = transport
 
     def _token(self, platform: Platform) -> str:
@@ -99,7 +101,10 @@ class InsightsService:
             ins = parse_insights(
                 http.get(
                     f"{media_id}/insights",
-                    {"metric": "reach,saved,shares", "access_token": token},
+                    {
+                        "metric": "reach,saved,shares,profile_visits,follows,total_interactions",
+                        "access_token": token,
+                    },
                 )
             )
             metric = PostMetric(
@@ -110,6 +115,9 @@ class InsightsService:
                 shares=ins.get("shares", 0),
                 saved=ins.get("saved", 0),
                 reach=ins.get("reach", 0),
+                profile_visits=ins.get("profile_visits", 0),
+                follows=ins.get("follows", 0),
+                total_interactions=ins.get("total_interactions", 0),
                 raw={**fields, **ins},
             )
 
@@ -132,3 +140,66 @@ class InsightsService:
         if collected:
             logger.info("인사이트 수집 완료: %d개 게시물", len(collected))
         return collected
+
+    # --- 계정 단위 (BGI 브레이크아웃 귀인의 기반) ---
+
+    def fetch_account(self, platform: Platform) -> AccountMetric:
+        token = self._token(platform)
+        http = self._http(platform)
+
+        if platform == Platform.THREADS:
+            user_id = self.settings.meta_threads_user_id
+            if not user_id:
+                raise MetaAPIError("META_THREADS_USER_ID가 없습니다.")
+            ins = parse_insights(
+                http.get(
+                    f"{user_id}/threads_insights",
+                    {"metric": "views,followers_count", "access_token": token},
+                )
+            )
+            return AccountMetric(
+                platform=platform,
+                followers_count=ins.get("followers_count", 0),
+                views=ins.get("views", 0),
+                raw=ins,
+            )
+
+        # Instagram
+        user_id = self.settings.meta_ig_user_id
+        if not user_id:
+            raise MetaAPIError("META_IG_USER_ID가 없습니다.")
+        fields = http.get(user_id, {"fields": "followers_count", "access_token": token})
+        ins = parse_insights(
+            http.get(
+                f"{user_id}/insights",
+                {"metric": "reach,profile_views", "period": "day", "access_token": token},
+            )
+        )
+        return AccountMetric(
+            platform=platform,
+            followers_count=int(fields.get("followers_count", 0) or 0),
+            reach=ins.get("reach", 0),
+            profile_views=ins.get("profile_views", 0),
+            raw={**fields, **ins},
+        )
+
+    def sync_account(self) -> list[AccountMetric]:
+        """설정된 플랫폼의 계정 스냅샷을 수집·저장."""
+        collected: list[AccountMetric] = []
+        targets = []
+        if self.settings.meta_ig_user_id:
+            targets.append(Platform.INSTAGRAM)
+        if self.settings.meta_threads_user_id:
+            targets.append(Platform.THREADS)
+        for platform in targets:
+            try:
+                metric = self.fetch_account(platform)
+                self.account_repo.save_snapshot(metric)
+                collected.append(metric)
+            except MetaAPIError as e:
+                logger.warning("계정 인사이트 수집 실패 (%s): %s", platform.value, e)
+        return collected
+
+    def sync_all(self) -> tuple[list[PostMetric], list[AccountMetric]]:
+        """게시물 + 계정 성과를 한 번에 수집."""
+        return self.sync(), self.sync_account()

@@ -4,7 +4,9 @@ from pathlib import Path
 from typing import Optional
 import sqlite3
 
-from ..models import Post, ContentPlan, ContentPlanTopic, PostStatus, PostContent, PostMetric
+from ..models import (
+    Post, ContentPlan, ContentPlanTopic, PostStatus, PostContent, PostMetric, AccountMetric,
+)
 from ..models.enums import Platform as _Platform
 from ..models.enums import Platform, MediaType, ContentPillar
 from ..utils.time import now_utc, parse_dt
@@ -276,8 +278,9 @@ class MetricsRepository:
         conn.execute(
             """INSERT INTO post_metrics
                (post_id, platform, fetched_at, likes, comments, shares, saved,
-                reach, views, engagement_rate, raw_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                reach, views, profile_visits, follows, total_interactions,
+                engagement_rate, raw_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 metric.post_id,
                 metric.platform.value,
@@ -288,6 +291,9 @@ class MetricsRepository:
                 metric.saved,
                 metric.reach,
                 metric.views,
+                metric.profile_visits,
+                metric.follows,
+                metric.total_interactions,
                 metric.engagement_rate,
                 json.dumps(metric.raw) if metric.raw else None,
             ),
@@ -313,6 +319,9 @@ class MetricsRepository:
             saved=row["saved"],
             reach=row["reach"],
             views=row["views"],
+            profile_visits=row["profile_visits"],
+            follows=row["follows"],
+            total_interactions=row["total_interactions"],
             engagement_rate=row["engagement_rate"],
             fetched_at=parse_dt(row["fetched_at"]),
             raw=json.loads(row["raw_json"]) if row["raw_json"] else {},
@@ -363,3 +372,72 @@ class MetricsRepository:
                 }
             )
         return results
+
+
+class AccountMetricsRepository:
+    """계정 단위 성과(account_metrics) 스냅샷 저장 및 시계열 조회."""
+
+    def __init__(self, db_path: str | Path):
+        self.db_path = db_path
+
+    def _conn(self) -> sqlite3.Connection:
+        return get_connection(self.db_path)
+
+    def save_snapshot(self, metric: AccountMetric) -> None:
+        conn = self._conn()
+        conn.execute(
+            """INSERT INTO account_metrics
+               (platform, fetched_at, followers_count, reach, profile_views, views, raw_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                metric.platform.value,
+                metric.fetched_at.isoformat(),
+                metric.followers_count,
+                metric.reach,
+                metric.profile_views,
+                metric.views,
+                json.dumps(metric.raw) if metric.raw else None,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+    def _row_to_metric(self, row: sqlite3.Row) -> AccountMetric:
+        return AccountMetric(
+            platform=_Platform(row["platform"]),
+            followers_count=row["followers_count"],
+            reach=row["reach"],
+            profile_views=row["profile_views"],
+            views=row["views"],
+            fetched_at=parse_dt(row["fetched_at"]),
+            raw=json.loads(row["raw_json"]) if row["raw_json"] else {},
+        )
+
+    def latest(self, platform: _Platform) -> Optional[AccountMetric]:
+        conn = self._conn()
+        row = conn.execute(
+            "SELECT * FROM account_metrics WHERE platform=? ORDER BY fetched_at DESC LIMIT 1",
+            (platform.value,),
+        ).fetchone()
+        conn.close()
+        return self._row_to_metric(row) if row else None
+
+    def history(self, platform: _Platform, days: int = 30) -> list[AccountMetric]:
+        """최근 N일 스냅샷 (오래된 → 최신). 팔로워 델타 계산용."""
+        since = (now_utc() - timedelta(days=days)).isoformat()
+        conn = self._conn()
+        rows = conn.execute(
+            """SELECT * FROM account_metrics
+               WHERE platform=? AND fetched_at >= ?
+               ORDER BY fetched_at ASC""",
+            (platform.value, since),
+        ).fetchall()
+        conn.close()
+        return [self._row_to_metric(r) for r in rows]
+
+    def follower_growth(self, platform: _Platform, days: int = 30) -> Optional[int]:
+        """기간 내 팔로워 순증가 (최신 - 최초)."""
+        hist = self.history(platform, days)
+        if len(hist) < 2:
+            return None
+        return hist[-1].followers_count - hist[0].followers_count

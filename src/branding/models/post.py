@@ -79,15 +79,31 @@ class PostMetric(BaseModel):
     saved: int = 0
     reach: int = 0
     views: int = 0
+    profile_visits: int = 0        # 게시물에서 발생한 프로필 방문 (성장 신호)
+    follows: int = 0               # 게시물에서 발생한 팔로우 (IG)
+    total_interactions: int = 0    # 총 상호작용
     engagement_rate: float = 0.0
     fetched_at: datetime = Field(default_factory=now_utc)
     raw: dict = Field(default_factory=dict)
 
     def compute_engagement_rate(self) -> float:
         """(좋아요+댓글+공유+저장) / 도달. 도달 없으면 조회수로 대체."""
-        interactions = self.likes + self.comments + self.shares + self.saved
+        interactions = self.total_interactions or (
+            self.likes + self.comments + self.shares + self.saved
+        )
         denom = self.reach or self.views
         return round(interactions / denom, 4) if denom else 0.0
+
+
+class AccountMetric(BaseModel):
+    """계정 단위 성과 스냅샷 — 팔로워 성장·도달 시계열(브레이크아웃 귀인의 기반)."""
+    platform: Platform
+    followers_count: int = 0
+    reach: int = 0
+    profile_views: int = 0
+    views: int = 0
+    fetched_at: datetime = Field(default_factory=now_utc)
+    raw: dict = Field(default_factory=dict)
 
 
 class ContentPlanTopic(BaseModel):

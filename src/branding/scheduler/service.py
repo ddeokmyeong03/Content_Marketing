@@ -78,8 +78,8 @@ def _token_refresh_job(settings: Settings) -> None:
 
 def _insights_sync_job(settings: Settings) -> None:
     try:
-        collected = InsightsService(settings).sync()
-        logger.info("인사이트 수집: %d개", len(collected))
+        posts, accounts = InsightsService(settings).sync_all()
+        logger.info("인사이트 수집: 게시물 %d개, 계정 %d개", len(posts), len(accounts))
     except Exception:
         logger.exception("인사이트 수집 잡 실행 중 오류")
 

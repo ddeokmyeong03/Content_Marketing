@@ -4,8 +4,9 @@ from rich.table import Table
 from rich import box
 
 from ...config import get_settings, load_brand_config
-from ...db import MetricsRepository, init_db
+from ...db import AccountMetricsRepository, MetricsRepository, init_db
 from ...insights import InsightsService
+from ...models.enums import Platform
 
 app = typer.Typer(help="발행 성과 인사이트 수집 및 조회")
 console = Console()
@@ -13,21 +14,54 @@ console = Console()
 
 @app.command("sync")
 def sync_insights():
-    """발행된 게시물의 실제 성과를 Graph API로 수집·저장."""
+    """발행 게시물 + 계정 성과를 Graph API로 수집·저장."""
     settings = get_settings()
     init_db(settings.db_path)
     with console.status("[bold green]인사이트를 수집하고 있습니다...[/bold green]"):
-        collected = InsightsService(settings).sync()
-    if not collected:
-        console.print("[dim]수집할 발행 게시물이 없거나 지표를 가져오지 못했습니다.[/dim]")
+        posts, accounts = InsightsService(settings).sync_all()
+    if not posts and not accounts:
+        console.print("[dim]수집할 데이터가 없거나 지표를 가져오지 못했습니다.[/dim]")
         return
-    console.print(f"[green]✓ {len(collected)}개 게시물 성과 수집 완료[/green]")
-    for m in collected:
-        console.print(
-            f"  #{m.post_id} [{m.platform.value}] "
-            f"♥{m.likes} 💬{m.comments} 🔁{m.shares} 🔖{m.saved} "
-            f"(참여율 {m.engagement_rate})"
+    if posts:
+        console.print(f"[green]✓ {len(posts)}개 게시물 성과 수집[/green]")
+        for m in posts:
+            console.print(
+                f"  #{m.post_id} [{m.platform.value}] "
+                f"♥{m.likes} 💬{m.comments} 🔁{m.shares} 🔖{m.saved} "
+                f"👤{m.follows} (참여율 {m.engagement_rate})"
+            )
+    if accounts:
+        console.print(f"[green]✓ {len(accounts)}개 계정 스냅샷 수집[/green]")
+        for a in accounts:
+            console.print(f"  [{a.platform.value}] 팔로워 {a.followers_count} · 도달 {a.reach}")
+
+
+@app.command("account")
+def account_growth(
+    days: int = typer.Option(30, "--days", "-d", help="성장 추이 기간(일)"),
+):
+    """계정 팔로워 스냅샷 및 성장 추이 (BGI 귀인의 기반)."""
+    settings = get_settings()
+    init_db(settings.db_path)
+    repo = AccountMetricsRepository(settings.db_path)
+    found = False
+    for platform in (Platform.INSTAGRAM, Platform.THREADS):
+        latest = repo.latest(platform)
+        if not latest:
+            continue
+        found = True
+        growth = repo.follower_growth(platform, days=days)
+        growth_str = (
+            f"[green]+{growth}[/green]" if growth and growth > 0
+            else (str(growth) if growth is not None else "데이터 부족")
         )
+        console.print(
+            f"[cyan]{platform.value}[/cyan]: 팔로워 {latest.followers_count} "
+            f"· 최근 {days}일 성장 {growth_str} "
+            f"· 도달 {latest.reach} · 프로필뷰 {latest.profile_views}"
+        )
+    if not found:
+        console.print("[dim]계정 스냅샷이 없습니다. branding insights sync 를 먼저 실행하세요.[/dim]")
 
 
 @app.command("top")

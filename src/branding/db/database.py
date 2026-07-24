@@ -51,20 +51,52 @@ CREATE TABLE IF NOT EXISTS publish_log (
 );
 
 CREATE TABLE IF NOT EXISTS post_metrics (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id            INTEGER REFERENCES posts(id),
+    platform           TEXT NOT NULL,
+    fetched_at         DATETIME NOT NULL,
+    likes              INTEGER DEFAULT 0,
+    comments           INTEGER DEFAULT 0,
+    shares             INTEGER DEFAULT 0,
+    saved              INTEGER DEFAULT 0,
+    reach              INTEGER DEFAULT 0,
+    views              INTEGER DEFAULT 0,
+    profile_visits     INTEGER DEFAULT 0,
+    follows            INTEGER DEFAULT 0,
+    total_interactions INTEGER DEFAULT 0,
+    engagement_rate    REAL DEFAULT 0,
+    raw_json           TEXT
+);
+
+CREATE TABLE IF NOT EXISTS account_metrics (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    post_id         INTEGER REFERENCES posts(id),
     platform        TEXT NOT NULL,
     fetched_at      DATETIME NOT NULL,
-    likes           INTEGER DEFAULT 0,
-    comments        INTEGER DEFAULT 0,
-    shares          INTEGER DEFAULT 0,
-    saved           INTEGER DEFAULT 0,
+    followers_count INTEGER DEFAULT 0,
     reach           INTEGER DEFAULT 0,
+    profile_views   INTEGER DEFAULT 0,
     views           INTEGER DEFAULT 0,
-    engagement_rate REAL DEFAULT 0,
     raw_json        TEXT
 );
 """
+
+# 기존 DB에 신규 컬럼을 안전하게 추가하기 위한 마이그레이션
+# (CREATE TABLE IF NOT EXISTS 는 이미 존재하는 테이블에 컬럼을 더하지 못함)
+_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
+    "post_metrics": [
+        ("profile_visits", "INTEGER DEFAULT 0"),
+        ("follows", "INTEGER DEFAULT 0"),
+        ("total_interactions", "INTEGER DEFAULT 0"),
+    ],
+}
+
+
+def _apply_migrations(conn: sqlite3.Connection) -> None:
+    for table, columns in _MIGRATIONS.items():
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        for col_name, col_def in columns:
+            if col_name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
 
 
 def get_connection(db_path: str | Path) -> sqlite3.Connection:
@@ -80,5 +112,6 @@ def get_connection(db_path: str | Path) -> sqlite3.Connection:
 def init_db(db_path: str | Path) -> None:
     conn = get_connection(db_path)
     conn.executescript(CREATE_TABLES_SQL)
+    _apply_migrations(conn)
     conn.commit()
     conn.close()
