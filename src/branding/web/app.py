@@ -12,8 +12,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 from ..analysis import BreakoutService
-from ..config import get_settings, load_brand_config
+from ..config import get_settings, load_brand_config, resolve_settings
 from ..config.settings import Settings
+from ..diagnostics import Diagnostics
 from ..db import (
     AccountMetricsRepository, BreakoutPatternRepository, MetricsRepository,
     PlanRepository, PostRepository, SettingsStore, init_db,
@@ -37,15 +38,6 @@ CONFIG_FIELDS = {
     "meta_app_id": False,
     "notify_webhook_url": False,
 }
-
-
-def resolve_settings(base: Settings, store: SettingsStore) -> Settings:
-    """.env 기반 Settings에 웹 등록값(settings_store)을 덮어써 반환."""
-    overrides = {
-        k: v for k, v in store.all().items()
-        if k in Settings.model_fields and v
-    }
-    return base.model_copy(update=overrides) if overrides else base
 
 
 def _mask(val: str) -> str:
@@ -200,6 +192,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     def _resolved() -> Settings:
         return resolve_settings(settings, store)
 
+    # /api/config 저장 후에도 즉시 반영되도록 매 요청 해석
+
     @app.get("/api/config")
     def get_config() -> dict:
         saved = store.all()
@@ -222,6 +216,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 store.set(k, v.strip())
                 changed.append(k)
         return {"ok": True, "changed": changed}
+
+    @app.post("/api/diagnostics")
+    def diagnostics(autofix: bool = False) -> dict:
+        """키·토큰·ID가 실제로 동작하는지 진단(+ 올바른 ID 자동 수정)."""
+        checks = Diagnostics(_resolved(), store=store).run_all(autofix=autofix)
+        return {
+            "checks": [c.to_dict() for c in checks],
+            "ok": all(c.status in ("ok", "skip") for c in checks),
+        }
 
     # --- 수동 실행 액션 (백그라운드 잡: 수집 → 분석 → 생성 → 발행) ---
 

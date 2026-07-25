@@ -83,6 +83,25 @@ Slack/Discord Incoming Webhook URL을 만들어 `.env`의 `NOTIFY_WEBHOOK_URL`�
 
 ---
 
+## 2-4. 연결 진단 (문제가 생기면 먼저 이것부터)
+
+키·토큰·계정 ID가 **실제로 동작하는지** 검사하고 해결법을 알려줍니다.
+
+```bash
+branding doctor run          # 검사만
+branding doctor run --fix    # 올바른 사용자 ID를 찾아 자동 저장
+```
+웹 대시보드의 **설정·실행 탭 → 🩺 연결 진단** 버튼도 동일하게 동작합니다.
+
+자주 나오는 진단 결과:
+
+| 증상 | 원인 · 해결 |
+|------|------------|
+| `Failed to decrypt` | Threads 전용 토큰이 아님. Meta 앱 → Use cases → **Threads** 에서 재발급(`threads_basic`) |
+| `Cannot parse access token` | 토큰이 잘리거나 공백이 섞임. 전체를 다시 복사 |
+| `Object with ID 'xxx' does not exist` | 사용자 ID에 **핸들**을 넣음. `--fix` 가 올바른 **숫자 ID**를 찾아 저장 |
+| Instagram 계정 못 찾음 | 프로(비즈니스) 계정 전환 + Facebook 페이지 연결 필요 |
+
 ## 3. 브랜드·니치 설정 (`brand/config.yaml`) — 가장 중요
 
 이 파일이 **참여 엔진의 방향**을 결정합니다. 코드 수정 없이 여기만 바꿉니다.

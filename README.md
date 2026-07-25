@@ -23,6 +23,7 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 
 | 명령 | 설명 |
 |------|------|
+| `branding doctor run [--fix]` | 연결 진단 — 키·토큰·계정 ID 검사 및 자동 수정 |
 | `branding brand show` | 브랜드 설정 확인 |
 | `branding plan generate --captions` | 주간 계획 + 캡션 생성 (DB 저장) |
 | `branding queue list` / `show` / `approve` / `reject` | 발행 큐 검토·승인 |

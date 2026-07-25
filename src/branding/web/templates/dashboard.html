@@ -190,6 +190,12 @@ const tabs = {
       </div>`;
     }).join('');
     view.innerHTML=`
+      <div class="card"><h3 style="margin-top:0">🩺 연결 진단</h3>
+        <div class="muted" style="font-size:12px;margin-bottom:8px">키·토큰·계정 ID가 실제로 동작하는지 검사합니다. 사용자 ID가 틀렸으면 올바른 값을 찾아 고쳐줍니다.</div>
+        <button class="act" onclick="runDiag(false)">진단 실행</button>
+        <button class="act" onclick="runDiag(true)">진단 + 자동 수정</button>
+        <div id="diagres" style="margin-top:12px"></div>
+      </div>
       <div class="card"><h3 style="margin-top:0">수동 실행 (수집 → 분석 → 생성 → 발행)</h3>
         <button class="act" onclick="runAct('collect','📥 성과 수집 중…')">📥 성과 수집</button>
         <button class="act" onclick="runAct('analyze','🔍 브레이크아웃 역설계 중…')">🔍 분석(역설계)</button>
@@ -223,6 +229,23 @@ function lineChart(points,w,h){
     </svg>
     <div class="muted" style="font-size:12px">${d} → ${d2} · ${min.toLocaleString()} ~ ${max.toLocaleString()} 팔로워</div>`;
 }
+
+async function runDiag(fix){
+  const el=document.getElementById('diagres');
+  el.innerHTML='<span class="muted">진단 중…</span>';
+  try{
+    const r=await post('/diagnostics'+(fix?'?autofix=true':''));
+    const icon={ok:'<span class="hi">✓</span>',warn:'<span class="mid">⚠</span>',
+                fail:'<span class="lo">✗</span>',skip:'<span class="muted">—</span>'};
+    el.innerHTML=r.checks.map(c=>`<div style="margin:6px 0">
+        ${icon[c.status]||'•'} <b>${c.name}</b> — ${c.message}
+        ${c.hint&&(c.status==='warn'||c.status==='fail')?`<div class="muted" style="font-size:12px;margin-left:18px">→ ${c.hint}</div>`:''}
+      </div>`).join('')
+      + (r.ok?'<div class="hi" style="margin-top:8px">모든 검사 통과 — 생성·발행 준비 완료.</div>':'');
+    if(fix) loadBrand();
+  }catch(e){el.innerHTML=`<span class="lo">✗ ${e.message}</span>`;}
+}
+window.runDiag=runDiag;
 
 async function runAct(name,busy){
   const el=document.getElementById('actres');
