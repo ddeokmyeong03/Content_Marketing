@@ -111,9 +111,12 @@ class PublishService:
                 post.id, success=True, response=primary.raw if primary else None
             )
         logger.info("발행 성공 (post #%s → %s)", post.id, primary.meta_post_id if primary else "?")
+        link = primary.permalink if primary and primary.permalink else post.topic[:40]
+        # 골든아워: 발행 직후 초기 참여가 알고리즘 도달을 좌우한다
         self.notifier.success(
             f"발행 완료 #{post.id} ({post.platform.value})",
-            (primary.permalink if primary and primary.permalink else post.topic[:40]),
+            f"{link}\n⏱ 지금부터 {self.settings.golden_hour_minutes}분이 골든아워입니다 — "
+            f"댓글 응대와 계정 활동으로 초기 참여를 올리세요.",
         )
         return PublishOutcome(post_id=post.id, success=True, result=primary)
 

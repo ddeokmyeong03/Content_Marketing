@@ -26,6 +26,14 @@ class MediaType(str, Enum):
     STORY = "story"
 
 
+class CommentStatus(str, Enum):
+    NEW = "new"            # 수집됨, 미처리
+    DRAFTED = "drafted"    # AI 답글 초안 생성됨
+    REPLIED = "replied"    # 답글 발행 완료
+    IGNORED = "ignored"    # 응대 불필요(스팸 등)
+    FAILED = "failed"      # 답글 발행 실패
+
+
 class ContentPillar(str, Enum):
     STARTUP_REALITY = "startup_reality"
     AUTOMATION_TIPS = "automation_tips"

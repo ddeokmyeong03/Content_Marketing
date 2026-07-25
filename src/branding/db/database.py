@@ -85,6 +85,22 @@ CREATE TABLE IF NOT EXISTS account_metrics (
     raw_json        TEXT
 );
 
+CREATE TABLE IF NOT EXISTS comments (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id           INTEGER REFERENCES posts(id),
+    platform          TEXT NOT NULL,
+    external_id       TEXT NOT NULL UNIQUE,
+    author            TEXT,
+    text              TEXT,
+    status            TEXT DEFAULT 'new',
+    draft_reply       TEXT,
+    replied_at        DATETIME,
+    reply_external_id TEXT,
+    error             TEXT,
+    commented_at      DATETIME,
+    fetched_at        DATETIME NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS breakout_patterns (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     post_id           INTEGER REFERENCES posts(id),

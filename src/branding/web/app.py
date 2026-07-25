@@ -16,12 +16,13 @@ from ..config import get_settings, load_brand_config, resolve_settings
 from ..config.settings import Settings
 from ..diagnostics import Diagnostics
 from ..db import (
-    AccountMetricsRepository, BreakoutPatternRepository, MetricsRepository,
-    PlanRepository, PostRepository, SettingsStore, init_db,
+    AccountMetricsRepository, BreakoutPatternRepository, CommentRepository,
+    MetricsRepository, PlanRepository, PostRepository, SettingsStore, init_db,
 )
+from ..engagement import EngagementService
 from ..insights import InsightsService
 from ..models import PostStatus
-from ..models.enums import Platform
+from ..models.enums import CommentStatus, Platform
 from ..publisher import PublishService
 from ..services import generate_week
 from .jobs import JobManager
@@ -217,6 +218,47 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 changed.append(k)
         return {"ok": True, "changed": changed}
 
+    # --- 댓글 응대 (계정 활성화) ---
+
+    @app.get("/api/comments")
+    def list_comments(status: str = "drafted") -> list[dict]:
+        repo = CommentRepository(settings.db_path)
+        if status == "all":
+            rows = repo.list_by_status(*list(CommentStatus))
+        else:
+            try:
+                rows = repo.list_by_status(CommentStatus(status))
+            except ValueError:
+                raise HTTPException(400, f"알 수 없는 상태: {status}")
+        return [
+            {
+                "id": c.id, "platform": c.platform.value, "author": c.author,
+                "text": c.text, "draft_reply": c.draft_reply, "status": c.status.value,
+                "post_id": c.post_id, "error": c.error,
+            }
+            for c in rows
+        ]
+
+    @app.post("/api/comments/{comment_id}/reply")
+    def reply_comment(comment_id: int, payload: dict | None = None) -> dict:
+        repo = CommentRepository(settings.db_path)
+        comment = repo.get_by_id(comment_id)
+        if not comment:
+            raise HTTPException(404, "댓글을 찾을 수 없습니다.")
+        message = (payload or {}).get("message") or None
+        out = EngagementService(_resolved()).post_reply(comment, message=message)
+        if not out.success:
+            return {"ok": False, "error": out.error}
+        return {"ok": True, "id": comment_id}
+
+    @app.post("/api/comments/{comment_id}/ignore")
+    def ignore_comment(comment_id: int) -> dict:
+        repo = CommentRepository(settings.db_path)
+        if not repo.get_by_id(comment_id):
+            raise HTTPException(404, "댓글을 찾을 수 없습니다.")
+        repo.mark_status(comment_id, CommentStatus.IGNORED)
+        return {"ok": True, "id": comment_id}
+
     @app.post("/api/diagnostics")
     def diagnostics(autofix: bool = False) -> dict:
         """키·토큰·ID가 실제로 동작하는지 진단(+ 올바른 ID 자동 수정)."""
@@ -263,9 +305,24 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         ok = sum(1 for o in outs if o.success)
         return {"message": f"발행 {ok}/{len(outs)}건"}
 
+    def _body_engage(report):
+        rs = _resolved()
+        svc = EngagementService(rs)
+        report("댓글 수집 중…", 0.2)
+        new_comments = svc.sync_comments()
+        drafted = []
+        if new_comments and rs.anthropic_api_key:
+            report(f"신규 {len(new_comments)}건 · 답글 초안 작성 중…", 0.6)
+            brand_cfg = load_brand_config(rs.brand_config_path)
+            drafted = svc.draft_replies(
+                brand_cfg, rs.anthropic_api_key, model=rs.anthropic_model
+            )
+        return {"message": f"신규 댓글 {len(new_comments)}건 · 초안 {len(drafted)}건"}
+
     _ACTIONS = {
         "collect": _body_collect, "analyze": _body_analyze,
         "generate": _body_generate, "publish-due": _body_publish,
+        "engage": _body_engage,
     }
 
     @app.post("/api/actions/{name}")

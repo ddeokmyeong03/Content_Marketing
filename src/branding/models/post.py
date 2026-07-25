@@ -2,7 +2,7 @@ from datetime import datetime, date
 from typing import Optional
 from pydantic import BaseModel, Field
 
-from .enums import PostStatus, Platform, MediaType, ContentPillar
+from .enums import PostStatus, Platform, MediaType, ContentPillar, CommentStatus
 from ..utils.time import now_utc
 
 
@@ -104,6 +104,26 @@ class AccountMetric(BaseModel):
     views: int = 0
     fetched_at: datetime = Field(default_factory=now_utc)
     raw: dict = Field(default_factory=dict)
+
+
+class Comment(BaseModel):
+    """내 게시물에 달린 댓글/답글 + AI 답글 초안.
+
+    계정 활성도(답글 응대)는 알고리즘 도달에 직접 영향을 준다.
+    """
+    id: Optional[int] = None
+    post_id: Optional[int] = None
+    platform: Platform
+    external_id: str                     # 플랫폼 댓글 ID
+    author: str = ""
+    text: str = ""
+    status: CommentStatus = CommentStatus.NEW
+    draft_reply: Optional[str] = None    # AI 초안 (검토 후 발행)
+    replied_at: Optional[datetime] = None
+    reply_external_id: Optional[str] = None
+    error: Optional[str] = None
+    commented_at: Optional[datetime] = None
+    fetched_at: datetime = Field(default_factory=now_utc)
 
 
 class BreakoutPattern(BaseModel):

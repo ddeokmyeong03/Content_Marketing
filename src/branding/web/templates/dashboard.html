@@ -77,6 +77,7 @@
 <nav>
   <button data-tab="overview" class="active">개요</button>
   <button data-tab="queue">검토 큐</button>
+  <button data-tab="comments">댓글 응대</button>
   <button data-tab="growth">성장 분석</button>
   <button data-tab="patterns">승리 공식</button>
   <button data-tab="control">설정·실행</button>
@@ -134,6 +135,36 @@ const tabs = {
       qt.querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>openPost(tr.dataset.id));
     };
     document.getElementById('st').onchange=render; render();
+  },
+  async comments(){
+    view.innerHTML=`<div class="card">
+        <button class="act" onclick="runActInline('engage','📥 댓글 수집·초안 작성 중…','cres')">📥 댓글 수집 + 초안</button>
+        <label class="muted" style="margin-left:10px">상태 </label>
+        <select id="cst">
+          <option value="drafted">초안 대기</option><option value="new">미처리</option>
+          <option value="replied">응대 완료</option><option value="failed">실패</option>
+          <option value="all">전체</option></select>
+        <div id="cres" style="margin-top:10px"></div>
+        <div class="muted" style="font-size:12px;margin-top:8px">빠른 답글 응대는 계정 활성도를 높여 알고리즘 도달을 늘립니다.</div>
+        <div id="clist" style="margin-top:12px"></div>
+      </div>`;
+    const render=async()=>{
+      const rows=await api('/comments?status='+document.getElementById('cst').value);
+      const el=document.getElementById('clist');
+      if(!rows.length){el.innerHTML='<div class="empty">해당 상태의 댓글이 없습니다.</div>';return;}
+      el.innerHTML=rows.map(c=>`<div class="chartcard">
+          <div><span class="tag">${c.platform}</span><b>@${c.author||'user'}</b>
+            <span class="pill s-${c.status==='replied'?'published':'draft'}" style="float:right">${c.status}</span></div>
+          <div style="margin:8px 0">${(c.text||'').replace(/</g,'&lt;')}</div>
+          ${c.status!=='replied'?`<textarea id="r${c.id}" rows="2" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px">${(c.draft_reply||'').replace(/</g,'&lt;')}</textarea>
+            <div style="margin-top:6px"><button class="act approve" onclick="sendReply(${c.id})">답글 발행</button>
+            <button class="act" onclick="ignoreC(${c.id})">무시</button></div>`
+            :'<div class="muted" style="font-size:12px">응대 완료</div>'}
+          ${c.error?`<div class="lo" style="font-size:12px;margin-top:4px">✗ ${c.error}</div>`:''}
+        </div>`).join('');
+    };
+    document.getElementById('cst').onchange=render; render();
+    window._renderComments=render;
   },
   async growth(){
     const [bo,at,igs,ths]=await Promise.all([
@@ -230,6 +261,28 @@ function lineChart(points,w,h){
     <div class="muted" style="font-size:12px">${d} → ${d2} · ${min.toLocaleString()} ~ ${max.toLocaleString()} 팔로워</div>`;
 }
 
+async function sendReply(id){
+  const ta=document.getElementById('r'+id);
+  const r=await fetch('/api/comments/'+id+'/reply',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({message:ta.value})});
+  const j=await r.json();
+  if(j.ok){ if(window._renderComments) window._renderComments(); }
+  else alert('실패: '+j.error);
+}
+async function ignoreC(id){
+  await post('/comments/'+id+'/ignore');
+  if(window._renderComments) window._renderComments();
+}
+async function runActInline(name,busy,targetId){
+  const el=document.getElementById(targetId);
+  el.innerHTML=`<div class="muted">${busy}</div><div class="bar"><div class="fill" style="width:5%"></div></div>`;
+  try{
+    const {job_id}=await post('/actions/'+name);
+    pollJob(job_id, el, ()=>{ if(window._renderComments) window._renderComments(); });
+  }catch(e){el.innerHTML=`<span class="lo">✗ ${e.message}</span>`;}
+}
+window.sendReply=sendReply; window.ignoreC=ignoreC; window.runActInline=runActInline;
+
 async function runDiag(fix){
   const el=document.getElementById('diagres');
   el.innerHTML='<span class="muted">진단 중…</span>';
@@ -255,15 +308,16 @@ async function runAct(name,busy){
     pollJob(job_id, el);
   }catch(e){el.innerHTML=`<span class="lo">✗ ${e.message}</span>`;}
 }
-async function pollJob(id, el){
+async function pollJob(id, el, onDone){
   try{
     const j=await api('/jobs/'+id);
     const pct=Math.round((j.progress||0)*100);
     if(j.status==='running'){
       el.innerHTML=`<div class="muted">${j.message||'실행 중…'} (${pct}%)</div><div class="bar"><div class="fill" style="width:${Math.max(pct,5)}%"></div></div>`;
-      setTimeout(()=>pollJob(id,el),1200);
+      setTimeout(()=>pollJob(id,el,onDone),1200);
     }else if(j.status==='done'){
       el.innerHTML=`<span class="hi">✓ ${(j.result&&j.result.message)||'완료'}</span>`;
+      if(onDone) onDone();
     }else{
       el.innerHTML=`<span class="lo">✗ ${j.error}</span>`;
     }

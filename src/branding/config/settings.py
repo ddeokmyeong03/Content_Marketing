@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # 알림
     notify_webhook_url: str = ""         # Slack 호환 incoming webhook URL (비우면 콘솔만)
 
+    # 참여·응대 (계정 활성화)
+    comment_poll_minutes: int = 15       # 댓글 수집 주기
+    auto_reply: bool = False             # True면 초안을 검토 없이 바로 발행
+    golden_hour_minutes: int = 60        # 발행 직후 집중 응대 권장 시간
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "content.db"

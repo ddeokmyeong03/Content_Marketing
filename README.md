@@ -30,6 +30,8 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 | `branding post now <id>` | 특정 게시물 즉시 발행 |
 | `branding token set -p threads -t <TOKEN>` | 액세스 토큰 저장(.env보다 우선) |
 | `branding token refresh [--force]` | 만료 임박 롱리브드 토큰 갱신 |
+| `branding engage sync` | 댓글 수집 + AI 답글 초안 생성 |
+| `branding engage list` / `reply <id>` / `auto` | 답글 검토·발행 |
 | `branding insights sync` | 발행 게시물 + 계정 성과 수집 |
 | `branding insights top` | 참여율 상위 성과 콘텐츠 확인 |
 | `branding insights account` | 계정 팔로워·성장 추이 (BGI 기반) |
@@ -69,6 +71,20 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 - **브레이크아웃 성장 분석 (BGI)** — 팔로워 대비 압도적으로 뜬 게시물을 탐지(`insights breakouts`)하고 AI로 왜 떴는지 역설계(`insights deconstruct`)해 '승리 공식'으로 축적, 다음 기획·캡션 생성에 자동 재주입(폐루프). 상세: `docs/GROWTH_ANALYSIS.md`
 
 > 니치·청중·심리 레버·목표 지표·설득 강도는 모두 `brand/config.yaml`에서 **코드 수정 없이** 조정합니다.
+
+## 도달을 만드는 것 — 참여·계정 활성화
+
+게시만 해서는 도달이 늘지 않습니다. 알고리즘은 **초기 참여율(좋아요·댓글·저장)과 계정 활성도**를 봅니다.
+
+- **댓글 응대 자동화**: 내 게시물 댓글을 수집해 브랜드 톤 답글을 AI가 초안 작성 →
+  검토 후 발행(`engage sync` → `engage list` → `engage reply`). 스팸은 자동 무시.
+  `AUTO_REPLY=true` 면 검토 없이 즉시 응대. 스케줄러가 15분마다 순회합니다.
+- **골든아워 알림**: 발행 직후 집중 응대 시간을 알림으로 통지 (초기 참여가 도달을 좌우).
+- **참여 최적화**: `engagement.primary_metric`(saves/comments/shares)에 맞춰 훅·CTA를 설계.
+
+> ⚠️ **타 계정 팔로우·좋아요는 자동화하지 않습니다.** 공식 Graph API에 해당 엔드포인트가
+> 없고, 비공식 자동화는 플랫폼 정책 위반으로 계정 정지 위험이 있습니다. 타깃 발굴까지는
+> 자동화하되 실제 팔로우·반응은 사람이 직접 하는 방식을 권장합니다.
 
 ## 자동화 수준
 

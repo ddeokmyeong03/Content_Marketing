@@ -5,7 +5,9 @@ from rich.console import Console
 from rich.logging import RichHandler
 
 from ..config import get_settings
-from .commands import brand, post, queue, plan, serve, token, insights, web, doctor
+from .commands import (
+    brand, post, queue, plan, serve, token, insights, web, doctor, engage,
+)
 
 app = typer.Typer(
     name="branding",
@@ -23,6 +25,7 @@ app.add_typer(token.app, name="token")
 app.add_typer(insights.app, name="insights")
 app.add_typer(web.app, name="web")
 app.add_typer(doctor.app, name="doctor")
+app.add_typer(engage.app, name="engage")
 
 
 @app.callback()

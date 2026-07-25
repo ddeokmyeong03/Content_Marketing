@@ -6,7 +6,7 @@ import sqlite3
 
 from ..models import (
     Post, ContentPlan, ContentPlanTopic, PostStatus, PostContent, PostMetric, AccountMetric,
-    BreakoutPattern,
+    BreakoutPattern, Comment, CommentStatus,
 )
 from ..models.enums import Platform as _Platform
 from ..models.enums import Platform, MediaType, ContentPillar
@@ -492,6 +492,112 @@ class AccountMetricsRepository:
             ).fetchone()
         conn.close()
         return row["followers_count"] if row else None
+
+
+class CommentRepository:
+    """댓글/답글 저장·조회. external_id 기준 중복 수집 방지."""
+
+    def __init__(self, db_path: str | Path):
+        self.db_path = db_path
+
+    def _conn(self) -> sqlite3.Connection:
+        return get_connection(self.db_path)
+
+    def upsert(self, comment: Comment) -> Comment:
+        """새 댓글만 삽입(이미 있으면 기존 레코드 유지 — 사람이 손댄 상태 보호)."""
+        conn = self._conn()
+        cur = conn.execute(
+            """INSERT INTO comments
+               (post_id, platform, external_id, author, text, status, draft_reply,
+                replied_at, reply_external_id, error, commented_at, fetched_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(external_id) DO NOTHING""",
+            (
+                comment.post_id, comment.platform.value, comment.external_id,
+                comment.author, comment.text, comment.status.value, comment.draft_reply,
+                comment.replied_at.isoformat() if comment.replied_at else None,
+                comment.reply_external_id, comment.error,
+                comment.commented_at.isoformat() if comment.commented_at else None,
+                comment.fetched_at.isoformat(),
+            ),
+        )
+        conn.commit()
+        new_id = cur.lastrowid if cur.rowcount else None
+        conn.close()
+        return comment.model_copy(update={"id": new_id}) if new_id else comment
+
+    def _row(self, row: sqlite3.Row) -> Comment:
+        return Comment(
+            id=row["id"],
+            post_id=row["post_id"],
+            platform=_Platform(row["platform"]),
+            external_id=row["external_id"],
+            author=row["author"] or "",
+            text=row["text"] or "",
+            status=CommentStatus(row["status"]),
+            draft_reply=row["draft_reply"],
+            replied_at=parse_dt(row["replied_at"]),
+            reply_external_id=row["reply_external_id"],
+            error=row["error"],
+            commented_at=parse_dt(row["commented_at"]),
+            fetched_at=parse_dt(row["fetched_at"]),
+        )
+
+    def get_by_id(self, comment_id: int) -> Optional[Comment]:
+        conn = self._conn()
+        row = conn.execute("SELECT * FROM comments WHERE id=?", (comment_id,)).fetchone()
+        conn.close()
+        return self._row(row) if row else None
+
+    def exists(self, external_id: str) -> bool:
+        conn = self._conn()
+        row = conn.execute(
+            "SELECT 1 FROM comments WHERE external_id=? LIMIT 1", (external_id,)
+        ).fetchone()
+        conn.close()
+        return row is not None
+
+    def list_by_status(self, *statuses: CommentStatus) -> list[Comment]:
+        if not statuses:
+            statuses = (CommentStatus.NEW,)
+        marks = ",".join("?" for _ in statuses)
+        conn = self._conn()
+        rows = conn.execute(
+            f"""SELECT * FROM comments WHERE status IN ({marks})
+                ORDER BY commented_at DESC, id DESC""",
+            tuple(s.value for s in statuses),
+        ).fetchall()
+        conn.close()
+        return [self._row(r) for r in rows]
+
+    def save_draft(self, comment_id: int, draft: str) -> None:
+        conn = self._conn()
+        conn.execute(
+            "UPDATE comments SET draft_reply=?, status=? WHERE id=?",
+            (draft, CommentStatus.DRAFTED.value, comment_id),
+        )
+        conn.commit()
+        conn.close()
+
+    def mark_replied(self, comment_id: int, reply_external_id: Optional[str]) -> None:
+        conn = self._conn()
+        conn.execute(
+            """UPDATE comments SET status=?, replied_at=?, reply_external_id=?, error=NULL
+               WHERE id=?""",
+            (CommentStatus.REPLIED.value, now_utc().isoformat(), reply_external_id, comment_id),
+        )
+        conn.commit()
+        conn.close()
+
+    def mark_status(self, comment_id: int, status: CommentStatus,
+                    error: Optional[str] = None) -> None:
+        conn = self._conn()
+        conn.execute(
+            "UPDATE comments SET status=?, error=? WHERE id=?",
+            (status.value, error, comment_id),
+        )
+        conn.commit()
+        conn.close()
 
 
 class BreakoutPatternRepository:

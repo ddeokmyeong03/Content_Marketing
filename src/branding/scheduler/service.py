@@ -76,6 +76,36 @@ def _token_refresh_job(settings: Settings) -> None:
         logger.exception("토큰 갱신 잡 실행 중 오류")
 
 
+def _comment_cycle_job(settings: Settings) -> None:
+    """댓글 수집 → AI 초안 → (auto_reply면) 발행. 계정 활성도 유지."""
+    try:
+        from ..engagement import EngagementService
+
+        svc = EngagementService(settings)
+        new_comments = svc.sync_comments()
+        if not new_comments:
+            return
+
+        drafted = []
+        if settings.anthropic_api_key:
+            brand = load_brand_config(settings.brand_config_path)
+            drafted = svc.draft_replies(
+                brand, settings.anthropic_api_key, model=settings.anthropic_model
+            )
+
+        if settings.auto_reply and drafted:
+            outs = svc.reply_all_drafted()
+            ok = sum(1 for o in outs if o.success)
+            get_notifier(settings).info("댓글 자동 응대", f"{ok}/{len(outs)}건 답글 발행")
+        elif drafted:
+            get_notifier(settings).warning(
+                f"답글 검토 대기 {len(drafted)}건",
+                "대시보드 '댓글 응대' 탭에서 승인하세요. 빠른 응대가 도달을 올립니다.",
+            )
+    except Exception:
+        logger.exception("댓글 응대 잡 실행 중 오류")
+
+
 def _insights_sync_job(settings: Settings) -> None:
     try:
         posts, accounts = InsightsService(settings).sync_all()
@@ -127,6 +157,15 @@ def build_scheduler(settings: Settings | None = None) -> BlockingScheduler:
         trigger=CronTrigger(hour=settings.insights_sync_hour, minute=0),
         args=[settings],
         id="insights-sync",
+        max_instances=1,
+        coalesce=True,
+    )
+
+    scheduler.add_job(
+        _comment_cycle_job,
+        trigger=IntervalTrigger(minutes=settings.comment_poll_minutes),
+        args=[settings],
+        id="comment-cycle",
         max_instances=1,
         coalesce=True,
     )
