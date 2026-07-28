@@ -30,6 +30,9 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 | `branding post now <id>` | 특정 게시물 즉시 발행 |
 | `branding token set -p threads -t <TOKEN>` | 액세스 토큰 저장(.env보다 우선) |
 | `branding token refresh [--force]` | 만료 임박 롱리브드 토큰 갱신 |
+| `branding render slides <id>` | 캐러셀 슬라이드를 텍스트 카드 PNG로 렌더링 |
+| `branding render sample` | 샘플 카드 1장 렌더링 (폰트·색상 확인용) |
+| `branding render check` | 렌더링 환경 점검 (브라우저 사용 가능 여부) |
 | `branding engage sync` | 댓글 수집 + AI 답글 초안 생성 |
 | `branding engage list` / `reply <id>` / `auto` | 답글 검토·발행 |
 | `branding insights sync` | 발행 게시물 + 계정 성과 수집 |
@@ -103,6 +106,30 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
   아직 미구현이며, `content.slides[].image_url` 또는 `content.image_urls`가
   채워져야 발행됩니다. 컨테이너는 생성 직후 바로 발행할 수 없어
   `status_code`가 `FINISHED`가 될 때까지 폴링합니다(캐러셀은 자식 컨테이너까지 전부).
+
+### 캐러셀 텍스트 카드
+
+AI 이미지 모델은 한글을 자주 깨뜨립니다. 문구가 들어가는 카드는 **HTML/CSS로 만들어
+헤드리스 크로미엄으로 PNG를 굽습니다** — 한글이 완벽하고 브랜드 색·폰트가 매번 동일합니다.
+
+```bash
+pip install -e '.[render]' && playwright install chromium
+branding render check              # 환경 점검
+branding render sample             # 카드 1장 렌더 — 한글이 네모(□)면 폰트 문제
+branding render slides <post_id>   # 게시물의 슬라이드 전체 렌더
+```
+
+캐러셀 포스트를 생성하면 캡션과 함께 **슬라이드 문구(`slides[]`)**가 만들어집니다.
+슬라이드마다 역할(hook/body/proof/cta)·헤드라인·보조 문구·강조 단어를 가지며,
+분량은 `brand/config.yaml`의 `carousel.headline_max_chars` 등으로 통제합니다.
+한도를 넘으면 렌더러가 폰트를 줄여 담아내되 CLI가 경고로 알려 줍니다.
+
+> **한글 폰트가 필요합니다.** `carousel.font_family_css`의 폰트 중 하나가 실행 환경에
+> 설치돼 있어야 합니다(Pretendard, Noto Sans KR, 애플 SD 산돌고딕, 맑은 고딕 등).
+> 브라우저를 직접 설치할 수 없는 환경에서는 `BRANDING_CHROMIUM_PATH`로 실행 파일을 지정하세요.
+
+렌더 결과는 `slide.image_path`(로컬)에 기록됩니다. **발행에는 공개 URL이 필요하므로
+업로드해 `slide.image_url`을 채워야 합니다** — 업로드는 아직 미구현입니다.
 
 ### 발행 실패와 재시도
 

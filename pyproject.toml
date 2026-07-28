@@ -30,6 +30,10 @@ web = [
     "fastapi>=0.110.0",
     "uvicorn>=0.29.0",
 ]
+# 캐러셀 텍스트 카드 렌더링 (HTML → 헤드리스 크로미엄 PNG)
+render = [
+    "playwright>=1.40.0",
+]
 
 [project.scripts]
 branding = "branding.cli.main:app"

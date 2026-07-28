@@ -27,7 +27,8 @@ class CarouselSlide(BaseModel):
     body: str = ""                              # 보조 문구
     emphasis: list[str] = Field(default_factory=list)  # 강조할 단어/구절
     image_brief: Optional[str] = None           # 이 슬라이드용 이미지 지시
-    image_url: Optional[str] = None             # 렌더링·호스팅 후 채워지는 공개 URL
+    image_path: Optional[str] = None            # 렌더링된 로컬 PNG 경로 (업로드 전)
+    image_url: Optional[str] = None             # 업로드 후 공개 URL (발행에 사용)
 
 
 class HookVariant(BaseModel):

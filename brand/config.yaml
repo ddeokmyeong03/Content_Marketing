@@ -177,6 +177,18 @@ engagement:
   hook_variants: 5                 # 생성·평가할 훅 개수
   min_hook_score: 70               # 이 점수 미만이면 캡션 1회 자동 재생성
 
+# 캐러셀 슬라이드 생성·렌더링
+#   글자수 한도는 프롬프트에 주입되어 '카드에 실제로 들어가는 분량'을 통제합니다.
+#   렌더러는 한도를 넘겨도 폰트를 줄여 담아내지만, 넘길수록 가독성이 떨어집니다.
+carousel:
+  slides: 7                        # 생성할 슬라이드 수 (Instagram 허용: 2~10)
+  headline_max_chars: 28           # 카드 큰 글씨 최대 길이
+  body_max_chars: 80               # 보조 문구 최대 길이
+  width: 1080                      # 렌더링 캔버스 (Instagram 세로형 4:5 권장)
+  height: 1350
+  # 한글이 깨지지 않으려면 이 중 하나가 실행 환경에 설치돼 있어야 합니다.
+  font_family_css: '"Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "NanumGothic", "WenQuanYi Zen Hei", sans-serif'
+
 # 브레이크아웃 판정 기준 (BGI)
 #   게시물이 적은 초기 계정에서는 z-score가 신뢰할 수 없으므로,
 #   min_samples 미만이면 '잠정 판정' 모드로 내려가고 신뢰도를 낮게 표기합니다.

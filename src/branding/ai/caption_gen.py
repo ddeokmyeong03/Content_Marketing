@@ -2,9 +2,9 @@ from pathlib import Path
 from typing import Optional
 from jinja2 import Template
 
-from ..config.brand_config import BrandConfig
+from ..config.brand_config import BrandConfig, CarouselConfig
 from ..models import (
-    PostContent, ImageBrief, HookVariant, BreakoutPattern,
+    PostContent, ImageBrief, HookVariant, CarouselSlide, BreakoutPattern,
     ContentPillar, Platform, MediaType,
 )
 from . import psychology
@@ -13,9 +13,61 @@ from .client import get_client, make_cached_system_block
 CAPTION_PROMPT_TEMPLATE = Path(__file__).parent / "prompts" / "caption_ko.txt"
 
 
-def _build_tool(hook_variants: int) -> dict:
-    """참여 엔진 산출물을 담는 tool 스키마. 훅 개수를 config에 맞춰 주입."""
+SLIDE_ROLES = ["hook", "body", "proof", "cta"]
+
+
+def _slides_schema(carousel: CarouselConfig) -> dict:
+    """캐러셀 슬라이드 스키마. 슬라이드 수·글자수 한도를 config에서 주입."""
     return {
+        "type": "array",
+        "description": (
+            f"캐러셀 슬라이드 {carousel.slides}장. 노출 순서대로. "
+            "첫 장은 hook, 마지막 장은 cta 역할이어야 합니다."
+        ),
+        "minItems": 2,
+        "maxItems": 10,
+        "items": {
+            "type": "object",
+            "properties": {
+                "role": {
+                    "type": "string",
+                    "enum": SLIDE_ROLES,
+                    "description": "슬라이드 역할 (hook=첫 장, body=본문, proof=근거·사례, cta=마지막 장)",
+                },
+                "headline": {
+                    "type": "string",
+                    "description": (
+                        f"카드에 크게 들어갈 한 줄. {carousel.headline_max_chars}자 이내로 "
+                        "짧고 강하게 (길면 카드에서 글씨가 작아져 가독성이 떨어짐)"
+                    ),
+                },
+                "body": {
+                    "type": "string",
+                    "description": (
+                        f"헤드라인을 받쳐주는 보조 문구. {carousel.body_max_chars}자 이내. "
+                        "필요 없으면 빈 문자열"
+                    ),
+                },
+                "emphasis": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "headline/body 안에서 시각적으로 강조할 단어나 구절 (0-2개). "
+                        "반드시 본문에 실제로 등장하는 문자열 그대로"
+                    ),
+                },
+            },
+            "required": ["role", "headline"],
+        },
+    }
+
+
+def _build_tool(hook_variants: int, carousel: Optional[CarouselConfig] = None) -> dict:
+    """참여 엔진 산출물을 담는 tool 스키마. 훅 개수를 config에 맞춰 주입.
+
+    `carousel`이 주어지면(=캐러셀 포스트) 슬라이드 구조도 함께 생성하게 한다.
+    """
+    tool = {
         "name": "create_post_content",
         "description": "참여율 최적화된 SNS 포스트 콘텐츠를 구조화된 형식으로 생성합니다",
         "input_schema": {
@@ -77,6 +129,40 @@ def _build_tool(hook_variants: int) -> dict:
             ],
         },
     }
+    if carousel is not None:
+        schema = tool["input_schema"]
+        schema["properties"]["slides"] = _slides_schema(carousel)
+        schema["required"] = [*schema["required"], "slides"]
+    return tool
+
+
+def _parse_slides(raw: list[dict]) -> list[CarouselSlide]:
+    """슬라이드 배열을 순서대로 CarouselSlide로 변환.
+
+    index는 배열 순서에서 부여한다(모델이 매기게 하면 중복·누락이 생김).
+    emphasis는 실제로 본문에 등장하는 것만 남긴다 — 렌더러가 강조를 문자열 매칭으로
+    적용하므로, 없는 문자열은 조용히 무시되는 대신 여기서 걸러 혼선을 없앤다.
+    """
+    slides: list[CarouselSlide] = []
+    for i, item in enumerate(raw, start=1):
+        headline = (item.get("headline") or "").strip()
+        body = (item.get("body") or "").strip()
+        haystack = f"{headline}\n{body}"
+        emphasis = [
+            term.strip()
+            for term in item.get("emphasis", []) or []
+            if term and term.strip() and term.strip() in haystack
+        ]
+        slides.append(
+            CarouselSlide(
+                index=i,
+                role=item.get("role") or ("hook" if i == 1 else "body"),
+                headline=headline,
+                body=body,
+                emphasis=emphasis,
+            )
+        )
+    return slides
 
 
 def generate_caption(
@@ -97,6 +183,8 @@ def generate_caption(
 
     eng = brand_config.engagement
     psy = brand_config.psychology
+    # 캐러셀일 때만 슬라이드 구조를 함께 생성한다
+    carousel = brand_config.carousel if media_type == MediaType.CAROUSEL else None
 
     template = Template(CAPTION_PROMPT_TEMPLATE.read_text(encoding="utf-8"))
     user_prompt = template.render(
@@ -114,15 +202,16 @@ def generate_caption(
         banned_tactics=", ".join(psy.banned_tactics),
         hook_variants=eng.hook_variants,
         winning_patterns=winning_patterns or [],
+        carousel=carousel,
     )
     if extra_guidance:
         user_prompt += f"\n\n## 개선 지시 (이전 초안 평가 반영)\n{extra_guidance}"
 
     response = client.messages.create(
         model=model,
-        max_tokens=2560,
+        max_tokens=4096 if carousel else 2560,
         system=[make_cached_system_block(brand_config)],
-        tools=[_build_tool(eng.hook_variants)],
+        tools=[_build_tool(eng.hook_variants, carousel)],
         tool_choice={"type": "tool", "name": "create_post_content"},
         messages=[{"role": "user", "content": user_prompt}],
     )
@@ -137,8 +226,10 @@ def generate_caption(
         image_brief = ImageBrief(**data["image_brief"])
 
     variants = [HookVariant(**h) for h in data.get("hook_variants", [])]
+    slides = _parse_slides(data.get("slides", [])) if carousel else []
 
     return PostContent(
+        slides=slides,
         caption_ko=data["caption_ko"],
         caption_en=data.get("caption_en"),
         hooks=[v.text for v in variants],

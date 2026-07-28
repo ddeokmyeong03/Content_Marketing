@@ -111,6 +111,24 @@ class EngagementConfig(BaseModel):
     min_hook_score: int = 70        # 이 점수 미만이면 캡션 1회 재생성
 
 
+class CarouselConfig(BaseModel):
+    """캐러셀 슬라이드 생성·렌더링 기준.
+
+    글자수 한도는 프롬프트에 주입되어 '카드에 실제로 들어가는 분량'을 통제한다.
+    렌더러는 한도를 넘겨도 폰트 크기를 줄여 담아내지만, 넘길수록 가독성이 떨어진다.
+    """
+    slides: int = 7                 # 생성할 슬라이드 수 (Instagram 허용: 2~10)
+    headline_max_chars: int = 28    # 카드 큰 글씨 최대 길이
+    body_max_chars: int = 80        # 보조 문구 최대 길이
+    # 렌더링 캔버스 — Instagram 세로형 권장 비율 4:5
+    width: int = 1080
+    height: int = 1350
+    font_family_css: str = (
+        '"Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", '
+        '"NanumGothic", "WenQuanYi Zen Hei", sans-serif'
+    )
+
+
 class AnalysisConfig(BaseModel):
     """브레이크아웃 판정 기준 (표본이 적은 초기 계정 대응 포함)."""
     z_threshold: float = 2.5      # 이 가중 z 이상이면 브레이크아웃
@@ -133,6 +151,7 @@ class BrandConfig(BaseModel):
     psychology: PsychologyConfig = Field(default_factory=PsychologyConfig)
     engagement: EngagementConfig = Field(default_factory=EngagementConfig)
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
+    carousel: CarouselConfig = Field(default_factory=CarouselConfig)
 
     def get_pillar(self, pillar_id: str) -> Optional[ContentPillarConfig]:
         return next((p for p in self.content_pillars if p.id == pillar_id), None)
