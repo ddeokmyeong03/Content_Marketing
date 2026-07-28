@@ -69,6 +69,10 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 - **자기평가·개선 루프** — 생성 후 루브릭으로 참여 점수를 매기고, `min_hook_score` 미만이면 평가를 반영해 1회 자동 재생성 (`generate_optimized_caption`)
 - **성과 측정 → 피드백 루프** — 발행 후 IG/Threads 실제 지표(저장·댓글·공유·도달)를 수집(`insights sync`)하고, 상위 성과 주제/훅을 **다음 주 기획에 재주입**(`MetricsRepository.top_performers` → 기획 프롬프트). 예측 → 측정 → 학습이 순환합니다.
 - **브레이크아웃 성장 분석 (BGI)** — 팔로워 대비 압도적으로 뜬 게시물을 탐지(`insights breakouts`)하고 AI로 왜 떴는지 역설계(`insights deconstruct`)해 '승리 공식'으로 축적, 다음 기획·캡션 생성에 자동 재주입(폐루프). 상세: `docs/GROWTH_ANALYSIS.md`
+- **표본이 적은 초기 계정** — z-score는 분포가 있어야 의미가 있으므로, 게시물이
+  `analysis.min_samples`(기본 8) 미만이면 **잠정 판정 모드**로 내려가 중앙값 대비
+  배수로 판정하고 낮은 신뢰도를 함께 표기합니다. 3개 미만이면 아예 판정하지 않고,
+  "정식 판정까지 N개 더 필요"를 알려 결과가 빈 이유를 구분해 줍니다.
 
 > 니치·청중·심리 레버·목표 지표·설득 강도는 모두 `brand/config.yaml`에서 **코드 수정 없이** 조정합니다.
 
@@ -96,4 +100,19 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 
 - **Threads**: 텍스트 발행은 토큰 + `META_THREADS_USER_ID`만 있으면 동작.
 - **Instagram**: Graph API가 **공개 이미지 URL**을 요구합니다. 이미지 생성·호스팅은
-  아직 미구현이며, `content.image_urls`가 채워져야 발행됩니다.
+  아직 미구현이며, `content.slides[].image_url` 또는 `content.image_urls`가
+  채워져야 발행됩니다. 컨테이너는 생성 직후 바로 발행할 수 없어
+  `status_code`가 `FINISHED`가 될 때까지 폴링합니다(캐러셀은 자식 컨테이너까지 전부).
+
+### 발행 실패와 재시도
+
+일시적 장애(레이트 리밋·5xx·네트워크 끊김)로 예약 게시물이 영구히 죽지 않도록
+두 겹으로 재시도합니다:
+
+1. **요청 단위** — `GraphHTTP`가 일시 오류를 지수 백오프로 즉시 재시도
+2. **잡 주기 단위** — 그래도 실패하면 `next_retry_at`을 예약해 스케줄러가 다음
+   주기에 다시 집어감 (`publish_max_attempts`회까지, 백오프 5→10→20분…)
+
+토큰·권한·입력 오류처럼 다시 보내도 결과가 같은 실패는 재시도하지 않고 즉시
+영구 실패로 확정하고 알립니다. 관련 설정: `publish_max_attempts`,
+`publish_retry_backoff_minutes`, `publish_retry_max_minutes`.

@@ -29,7 +29,10 @@ CREATE TABLE IF NOT EXISTS posts (
     meta_post_id   TEXT,
     permalink      TEXT,
     week_number    INTEGER NOT NULL,
-    created_at     DATETIME NOT NULL
+    created_at     DATETIME NOT NULL,
+    publish_attempts INTEGER DEFAULT 0,
+    next_retry_at    DATETIME,
+    last_error       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS settings_store (
@@ -132,6 +135,12 @@ _MIGRATIONS: dict[str, list[tuple[str, str]]] = {
     "breakout_patterns": [
         ("source", "TEXT DEFAULT 'internal'"),
         ("source_ref", "TEXT"),
+    ],
+    # 발행 재시도 상태 — 일시 장애로 실패한 게시물을 다시 집어가기 위한 컬럼
+    "posts": [
+        ("publish_attempts", "INTEGER DEFAULT 0"),
+        ("next_retry_at", "DATETIME"),
+        ("last_error", "TEXT"),
     ],
 }
 

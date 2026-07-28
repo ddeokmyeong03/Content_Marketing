@@ -111,6 +111,13 @@ class EngagementConfig(BaseModel):
     min_hook_score: int = 70        # 이 점수 미만이면 캡션 1회 재생성
 
 
+class AnalysisConfig(BaseModel):
+    """브레이크아웃 판정 기준 (표본이 적은 초기 계정 대응 포함)."""
+    z_threshold: float = 2.5      # 이 가중 z 이상이면 브레이크아웃
+    min_samples: int = 8          # 이 미만이면 z-score 대신 잠정 판정 모드
+    provisional_ratio: float = 2.0  # 잠정 모드: 중앙값 대비 이 배수 이상이면 잠정 브레이크아웃
+
+
 class BrandConfig(BaseModel):
     persona: PersonaConfig
     tone_of_voice: ToneConfig
@@ -125,6 +132,7 @@ class BrandConfig(BaseModel):
     audience: AudienceConfig = Field(default_factory=AudienceConfig)
     psychology: PsychologyConfig = Field(default_factory=PsychologyConfig)
     engagement: EngagementConfig = Field(default_factory=EngagementConfig)
+    analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
 
     def get_pillar(self, pillar_id: str) -> Optional[ContentPillarConfig]:
         return next((p for p in self.content_pillars if p.id == pillar_id), None)

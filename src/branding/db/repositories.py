@@ -14,10 +14,18 @@ from ..utils.time import now_utc, parse_dt
 from .database import get_connection
 
 
+def _row_value(row: sqlite3.Row, key: str, default=None):
+    """마이그레이션 전 DB에서도 안전하게 컬럼을 읽는다(없으면 기본값)."""
+    return row[key] if key in row.keys() else default
+
+
 def _row_to_post(row: sqlite3.Row) -> Post:
     # content_json 은 PostContent.model_dump_json() 결과이므로 그대로 역직렬화
     content = PostContent.model_validate_json(row["content_json"])
     return Post(
+        publish_attempts=_row_value(row, "publish_attempts", 0) or 0,
+        next_retry_at=parse_dt(_row_value(row, "next_retry_at")),
+        last_error=_row_value(row, "last_error"),
         id=row["id"],
         plan_id=row["plan_id"],
         platform=Platform(row["platform"]),
@@ -105,17 +113,58 @@ class PostRepository:
         return [_row_to_post(r) for r in rows]
 
     def list_pending_publish(self) -> list[Post]:
-        """발행 시간이 지난 APPROVED 상태 게시물 조회 (UTC 기준)"""
+        """발행 대상 조회 (UTC 기준).
+
+        두 종류를 함께 집어간다:
+          1. 예약 시각이 지난 APPROVED 게시물 (정상 경로)
+          2. 일시 장애로 FAILED 되었고 재시도 시각이 된 게시물 (복구 경로)
+        재시도 예정이 없는(next_retry_at IS NULL) 영구 실패 건은 제외된다.
+        """
         now = now_utc().isoformat()
         conn = self._conn()
         rows = conn.execute(
             """SELECT * FROM posts
-               WHERE status='approved' AND (scheduled_at IS NULL OR scheduled_at <= ?)
+               WHERE (status='approved' AND (scheduled_at IS NULL OR scheduled_at <= ?))
+                  OR (status='failed' AND next_retry_at IS NOT NULL AND next_retry_at <= ?)
                ORDER BY scheduled_at ASC""",
-            (now,),
+            (now, now),
         ).fetchall()
         conn.close()
         return [_row_to_post(r) for r in rows]
+
+    def mark_publish_failure(
+        self,
+        post_id: int,
+        error_msg: str,
+        attempts: int,
+        next_retry_at: Optional[datetime],
+    ) -> None:
+        """발행 실패 기록. `next_retry_at`이 None이면 영구 실패(더 이상 집어가지 않음)."""
+        conn = self._conn()
+        conn.execute(
+            """UPDATE posts
+               SET status=?, publish_attempts=?, next_retry_at=?, last_error=?
+               WHERE id=?""",
+            (
+                PostStatus.FAILED.value,
+                attempts,
+                next_retry_at.isoformat() if next_retry_at else None,
+                error_msg,
+                post_id,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+    def clear_publish_retry(self, post_id: int) -> None:
+        """발행 성공 시 재시도 상태 초기화."""
+        conn = self._conn()
+        conn.execute(
+            "UPDATE posts SET publish_attempts=0, next_retry_at=NULL, last_error=NULL WHERE id=?",
+            (post_id,),
+        )
+        conn.commit()
+        conn.close()
 
     def recent_topics(self, weeks: int = 4) -> list[str]:
         """최근 N주간 생성된 포스트 주제 목록 (중복 방지용)"""

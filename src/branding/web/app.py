@@ -147,8 +147,26 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 "score": r.result.breakout_score,
                 "is_breakout": r.result.is_breakout,
                 "reasons": r.result.reasons,
+                # 표본이 적을 때의 잠정 판정 여부 — UI에서 구분 표기용
+                "mode": r.result.mode,
+                "confidence": r.result.confidence,
+                "is_provisional": r.result.is_provisional,
             }
             for r in rows
+        ]
+
+    @app.get("/api/breakouts/coverage")
+    def breakout_coverage(weeks: int = 8) -> list[dict]:
+        """플랫폼별 판정 가능 여부 — 결과가 비었을 때 원인을 구분해준다."""
+        return [
+            {
+                "platform": c.platform.value,
+                "sample_size": c.sample_size,
+                "mode": c.mode,
+                "confidence": c.confidence,
+                "needed_for_zscore": c.needed_for_zscore,
+            }
+            for c in BreakoutService(settings).coverage(weeks=weeks)
         ]
 
     @app.get("/api/attribution")
