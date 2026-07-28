@@ -69,6 +69,6 @@ python scripts/demo_seed.py     # 키 없이 분석 기능 시연용 가짜 데�
 
 ## 커밋 규칙
 
-- 브랜치: `claude/automation-implementation-details-hlhzof` (main에 아직 미병합)
+- 브랜치: `claude/automation-implementation-details-hlhzof` (현재 `main`과 동일 — 병합 완료)
 - 커밋 메시지는 한국어, 무엇을/왜 중심
 - 작업 후 `pytest -q` 통과 확인

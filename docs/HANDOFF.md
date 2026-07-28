@@ -72,8 +72,8 @@
      Meta API를 403으로 막아 실검증 불가)
    - Meta 앱 → Use cases → **Threads** 에서 `threads_basic` + `threads_manage_replies` 권한으로 재발급 필요
 2. **노출된 자격증명 폐기 필요** — 대화 중 GitHub PAT와 Meta 토큰이 평문 노출됨. 둘 다 재발급 권장
-3. **`main` 미병합** — 모든 작업이 `claude/automation-implementation-details-hlhzof`에만 있음.
-   Codespace 등에서 `main`만 보면 아무것도 안 보임. 병합 또는 브랜치 체크아웃 필요
+3. ~~`main` 미병합~~ → **해결됨.** `main`에 fast-forward 병합 완료(`2108179`).
+   이제 `main`과 작업 브랜치가 동일하며, Codespace에서 `git pull` 하면 전체 코드가 보인다.
 
 ### 🟠 기능 공백
 4. **이미지 파이프라인 미구현** — Instagram 발행의 마지막 블로커(`content.image_urls`가 빔)
