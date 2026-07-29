@@ -29,7 +29,10 @@ CREATE TABLE IF NOT EXISTS posts (
     meta_post_id   TEXT,
     permalink      TEXT,
     week_number    INTEGER NOT NULL,
-    created_at     DATETIME NOT NULL
+    created_at     DATETIME NOT NULL,
+    publish_attempts INTEGER DEFAULT 0,
+    next_retry_at    DATETIME,
+    last_error       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS settings_store (
@@ -101,6 +104,36 @@ CREATE TABLE IF NOT EXISTS comments (
     fetched_at        DATETIME NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS target_candidates (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform         TEXT NOT NULL,
+    kind             TEXT NOT NULL,
+    external_id      TEXT NOT NULL,
+    permalink        TEXT,
+    username         TEXT,
+    source           TEXT,
+    caption_excerpt  TEXT,
+    followers_count  INTEGER DEFAULT 0,
+    like_count       INTEGER DEFAULT 0,
+    comments_count   INTEGER DEFAULT 0,
+    engagement_rate  REAL DEFAULT 0,
+    score            REAL DEFAULT 0,
+    reasons_json     TEXT,
+    status           TEXT DEFAULT 'new',
+    note             TEXT,
+    discovered_at    DATETIME NOT NULL,
+    actioned_at      DATETIME,
+    UNIQUE(platform, kind, external_id)
+);
+
+-- 해시태그 검색은 7일간 30개(고유 기준) 제한이 있다. 소진하면 일주일을 기다려야
+-- 하므로 조회 이력을 남겨 남은 여유를 계산한다.
+CREATE TABLE IF NOT EXISTS hashtag_queries (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    hashtag    TEXT NOT NULL,
+    queried_at DATETIME NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS breakout_patterns (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     post_id           INTEGER REFERENCES posts(id),
@@ -132,6 +165,12 @@ _MIGRATIONS: dict[str, list[tuple[str, str]]] = {
     "breakout_patterns": [
         ("source", "TEXT DEFAULT 'internal'"),
         ("source_ref", "TEXT"),
+    ],
+    # 발행 재시도 상태 — 일시 장애로 실패한 게시물을 다시 집어가기 위한 컬럼
+    "posts": [
+        ("publish_attempts", "INTEGER DEFAULT 0"),
+        ("next_retry_at", "DATETIME"),
+        ("last_error", "TEXT"),
     ],
 }
 

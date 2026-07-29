@@ -6,18 +6,27 @@ import sqlite3
 
 from ..models import (
     Post, ContentPlan, ContentPlanTopic, PostStatus, PostContent, PostMetric, AccountMetric,
-    BreakoutPattern, Comment, CommentStatus,
+    BreakoutPattern, Comment, CommentStatus, TargetCandidate, TargetKind, TargetStatus,
 )
 from ..models.enums import Platform as _Platform
 from ..models.enums import Platform, MediaType, ContentPillar
+from ..security import SecretBox, is_encrypted
 from ..utils.time import now_utc, parse_dt
 from .database import get_connection
+
+
+def _row_value(row: sqlite3.Row, key: str, default=None):
+    """마이그레이션 전 DB에서도 안전하게 컬럼을 읽는다(없으면 기본값)."""
+    return row[key] if key in row.keys() else default
 
 
 def _row_to_post(row: sqlite3.Row) -> Post:
     # content_json 은 PostContent.model_dump_json() 결과이므로 그대로 역직렬화
     content = PostContent.model_validate_json(row["content_json"])
     return Post(
+        publish_attempts=_row_value(row, "publish_attempts", 0) or 0,
+        next_retry_at=parse_dt(_row_value(row, "next_retry_at")),
+        last_error=_row_value(row, "last_error"),
         id=row["id"],
         plan_id=row["plan_id"],
         platform=Platform(row["platform"]),
@@ -105,17 +114,58 @@ class PostRepository:
         return [_row_to_post(r) for r in rows]
 
     def list_pending_publish(self) -> list[Post]:
-        """발행 시간이 지난 APPROVED 상태 게시물 조회 (UTC 기준)"""
+        """발행 대상 조회 (UTC 기준).
+
+        두 종류를 함께 집어간다:
+          1. 예약 시각이 지난 APPROVED 게시물 (정상 경로)
+          2. 일시 장애로 FAILED 되었고 재시도 시각이 된 게시물 (복구 경로)
+        재시도 예정이 없는(next_retry_at IS NULL) 영구 실패 건은 제외된다.
+        """
         now = now_utc().isoformat()
         conn = self._conn()
         rows = conn.execute(
             """SELECT * FROM posts
-               WHERE status='approved' AND (scheduled_at IS NULL OR scheduled_at <= ?)
+               WHERE (status='approved' AND (scheduled_at IS NULL OR scheduled_at <= ?))
+                  OR (status='failed' AND next_retry_at IS NOT NULL AND next_retry_at <= ?)
                ORDER BY scheduled_at ASC""",
-            (now,),
+            (now, now),
         ).fetchall()
         conn.close()
         return [_row_to_post(r) for r in rows]
+
+    def mark_publish_failure(
+        self,
+        post_id: int,
+        error_msg: str,
+        attempts: int,
+        next_retry_at: Optional[datetime],
+    ) -> None:
+        """발행 실패 기록. `next_retry_at`이 None이면 영구 실패(더 이상 집어가지 않음)."""
+        conn = self._conn()
+        conn.execute(
+            """UPDATE posts
+               SET status=?, publish_attempts=?, next_retry_at=?, last_error=?
+               WHERE id=?""",
+            (
+                PostStatus.FAILED.value,
+                attempts,
+                next_retry_at.isoformat() if next_retry_at else None,
+                error_msg,
+                post_id,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+    def clear_publish_retry(self, post_id: int) -> None:
+        """발행 성공 시 재시도 상태 초기화."""
+        conn = self._conn()
+        conn.execute(
+            "UPDATE posts SET publish_attempts=0, next_retry_at=NULL, last_error=NULL WHERE id=?",
+            (post_id,),
+        )
+        conn.commit()
+        conn.close()
 
     def recent_topics(self, weeks: int = 4) -> list[str]:
         """최근 N주간 생성된 포스트 주제 목록 (중복 방지용)"""
@@ -208,10 +258,15 @@ class PlanRepository:
 
 
 class SettingsStore:
-    """웹에서 등록한 런타임 설정(키·ID) 저장 (key-value). .env보다 우선 적용."""
+    """웹에서 등록한 런타임 설정(키·ID) 저장 (key-value). .env보다 우선 적용.
 
-    def __init__(self, db_path: str | Path):
+    값은 저장 시점에 암호화된다(`security.SecretBox`). 기존 평문 값도 그대로 읽히며
+    다음 쓰기에서 암호화된다.
+    """
+
+    def __init__(self, db_path: str | Path, box: Optional["SecretBox"] = None):
         self.db_path = db_path
+        self._box = box or SecretBox.for_db_path(db_path)
 
     def _conn(self) -> sqlite3.Connection:
         return get_connection(self.db_path)
@@ -221,29 +276,51 @@ class SettingsStore:
         conn.execute(
             """INSERT INTO settings_store (key, value, updated_at) VALUES (?, ?, ?)
                ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at""",
-            (key, value, now_utc().isoformat()),
+            (key, self._box.encrypt(value), now_utc().isoformat()),
         )
         conn.commit()
         conn.close()
 
     def get(self, key: str) -> Optional[str]:
         conn = self._conn()
-        row = conn.execute("SELECT value FROM settings_store WHERE key=?", (key,)).fetchone()
+        row = conn.execute(
+            "SELECT value FROM settings_store WHERE key=?", (key,)
+        ).fetchone()
         conn.close()
-        return row["value"] if row else None
+        return self._box.decrypt(row["value"]) if row else None
 
     def all(self) -> dict[str, str]:
         conn = self._conn()
         rows = conn.execute("SELECT key, value FROM settings_store").fetchall()
         conn.close()
+        return {r["key"]: self._box.decrypt(r["value"]) for r in rows if r["value"]}
+
+    def raw_all(self) -> dict[str, str]:
+        """복호화하지 않은 원본 값 — 마이그레이션 진단용."""
+        conn = self._conn()
+        rows = conn.execute("SELECT key, value FROM settings_store").fetchall()
+        conn.close()
         return {r["key"]: r["value"] for r in rows if r["value"]}
+
+    def reencrypt_all(self) -> list[str]:
+        """평문으로 저장된 값을 암호화해 다시 쓴다. 바뀐 키 목록을 돌려준다."""
+        changed = []
+        for key, value in self.raw_all().items():
+            if not is_encrypted(value):
+                self.set(key, value)
+                changed.append(key)
+        return changed
 
 
 class TokenRepository:
-    """Meta/Threads 액세스 토큰 영속화. 토큰 자동 갱신 시 사용."""
+    """Meta/Threads 액세스 토큰 영속화. 토큰 자동 갱신 시 사용.
 
-    def __init__(self, db_path: str | Path):
+    토큰은 저장 시점에 암호화된다(기존 평문 값도 그대로 읽힘).
+    """
+
+    def __init__(self, db_path: str | Path, box: Optional["SecretBox"] = None):
         self.db_path = db_path
+        self._box = box or SecretBox.for_db_path(db_path)
 
     def _conn(self) -> sqlite3.Connection:
         return get_connection(self.db_path)
@@ -266,7 +343,7 @@ class TokenRepository:
                    updated_at=excluded.updated_at""",
             (
                 platform,
-                access_token,
+                self._box.encrypt(access_token),
                 token_type,
                 expires_at.isoformat() if expires_at else None,
                 now_utc().isoformat(),
@@ -281,7 +358,24 @@ class TokenRepository:
             "SELECT access_token FROM token_store WHERE platform=?", (platform,)
         ).fetchone()
         conn.close()
-        return row["access_token"] if row else None
+        return self._box.decrypt(row["access_token"]) if row else None
+
+    def reencrypt_all(self) -> list[str]:
+        """평문으로 저장된 토큰을 암호화해 다시 쓴다. 바뀐 플랫폼 목록을 돌려준다."""
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT platform, access_token, token_type, expires_at FROM token_store"
+        ).fetchall()
+        conn.close()
+        changed = []
+        for r in rows:
+            if r["access_token"] and not is_encrypted(r["access_token"]):
+                self.upsert(
+                    r["platform"], r["access_token"], r["token_type"],
+                    parse_dt(r["expires_at"]) if r["expires_at"] else None,
+                )
+                changed.append(r["platform"])
+        return changed
 
     def get_expiry(self, platform: str) -> Optional[datetime]:
         conn = self._conn()
@@ -680,3 +774,167 @@ class BreakoutPatternRepository:
         ).fetchall()
         conn.close()
         return [self._row(r) for r in rows]
+
+
+class TargetRepository:
+    """발굴된 참여 대상 저장.
+
+    같은 게시물·계정을 매일 다시 발굴해도 중복이 쌓이지 않도록
+    (platform, kind, external_id)로 upsert 하며, 사람이 이미 처리한 항목의
+    상태는 덮어쓰지 않는다.
+    """
+
+    def __init__(self, db_path: str | Path):
+        self.db_path = db_path
+
+    def _conn(self) -> sqlite3.Connection:
+        return get_connection(self.db_path)
+
+    def _row(self, row: sqlite3.Row) -> TargetCandidate:
+        return TargetCandidate(
+            id=row["id"],
+            platform=Platform(row["platform"]),
+            kind=TargetKind(row["kind"]),
+            external_id=row["external_id"],
+            permalink=row["permalink"],
+            username=row["username"],
+            source=row["source"] or "",
+            caption_excerpt=row["caption_excerpt"] or "",
+            followers_count=row["followers_count"] or 0,
+            like_count=row["like_count"] or 0,
+            comments_count=row["comments_count"] or 0,
+            engagement_rate=row["engagement_rate"] or 0.0,
+            score=row["score"] or 0.0,
+            reasons=json.loads(row["reasons_json"]) if row["reasons_json"] else [],
+            status=TargetStatus(row["status"]),
+            note=row["note"] or "",
+            discovered_at=parse_dt(row["discovered_at"]),
+            actioned_at=parse_dt(row["actioned_at"]),
+        )
+
+    def upsert(self, c: TargetCandidate) -> TargetCandidate:
+        """새 후보는 추가하고, 이미 있으면 지표·점수만 갱신한다.
+
+        status/note/actioned_at 은 사람의 판단이므로 덮어쓰지 않는다.
+        """
+        conn = self._conn()
+        conn.execute(
+            """INSERT INTO target_candidates
+               (platform, kind, external_id, permalink, username, source, caption_excerpt,
+                followers_count, like_count, comments_count, engagement_rate, score,
+                reasons_json, status, note, discovered_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(platform, kind, external_id) DO UPDATE SET
+                   permalink=excluded.permalink,
+                   username=excluded.username,
+                   source=excluded.source,
+                   caption_excerpt=excluded.caption_excerpt,
+                   followers_count=excluded.followers_count,
+                   like_count=excluded.like_count,
+                   comments_count=excluded.comments_count,
+                   engagement_rate=excluded.engagement_rate,
+                   score=excluded.score,
+                   reasons_json=excluded.reasons_json""",
+            (
+                c.platform.value, c.kind.value, c.external_id, c.permalink, c.username,
+                c.source, c.caption_excerpt, c.followers_count, c.like_count,
+                c.comments_count, c.engagement_rate, c.score,
+                json.dumps(c.reasons, ensure_ascii=False), c.status.value, c.note,
+                c.discovered_at.isoformat(),
+            ),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM target_candidates WHERE platform=? AND kind=? AND external_id=?",
+            (c.platform.value, c.kind.value, c.external_id),
+        ).fetchone()
+        conn.close()
+        return self._row(row)
+
+    def get_by_id(self, candidate_id: int) -> Optional[TargetCandidate]:
+        conn = self._conn()
+        row = conn.execute(
+            "SELECT * FROM target_candidates WHERE id=?", (candidate_id,)
+        ).fetchone()
+        conn.close()
+        return self._row(row) if row else None
+
+    def list_by_status(
+        self, status: TargetStatus = TargetStatus.NEW, limit: int = 50
+    ) -> list[TargetCandidate]:
+        """점수 높은 순 — 하루에 쓸 시간은 정해져 있으니 가장 값진 것부터."""
+        conn = self._conn()
+        rows = conn.execute(
+            """SELECT * FROM target_candidates WHERE status=?
+               ORDER BY score DESC, discovered_at DESC LIMIT ?""",
+            (status.value, limit),
+        ).fetchall()
+        conn.close()
+        return [self._row(r) for r in rows]
+
+    def set_status(
+        self, candidate_id: int, status: TargetStatus, note: str = ""
+    ) -> Optional[TargetCandidate]:
+        conn = self._conn()
+        actioned = now_utc().isoformat() if status != TargetStatus.NEW else None
+        conn.execute(
+            "UPDATE target_candidates SET status=?, note=?, actioned_at=? WHERE id=?",
+            (status.value, note, actioned, candidate_id),
+        )
+        conn.commit()
+        conn.close()
+        return self.get_by_id(candidate_id)
+
+    def counts(self) -> dict[str, int]:
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT status, COUNT(*) AS n FROM target_candidates GROUP BY status"
+        ).fetchall()
+        conn.close()
+        return {r["status"]: r["n"] for r in rows}
+
+
+class HashtagQuotaRepository:
+    """해시태그 검색 사용량 추적.
+
+    Instagram은 7일 동안 **고유 해시태그 30개**까지만 조회를 허용한다. 이미 조회한
+    해시태그를 다시 보는 것은 무료지만, 새 해시태그는 한도를 소모한다. 모르고 쓰면
+    일주일간 발굴이 막히므로 남은 여유를 계산해 준다.
+    """
+
+    WINDOW_DAYS = 7
+
+    def __init__(self, db_path: str | Path, limit: int = 30):
+        self.db_path = db_path
+        self.limit = limit
+
+    def _conn(self) -> sqlite3.Connection:
+        return get_connection(self.db_path)
+
+    def record(self, hashtag: str) -> None:
+        conn = self._conn()
+        conn.execute(
+            "INSERT INTO hashtag_queries (hashtag, queried_at) VALUES (?, ?)",
+            (hashtag.lstrip("#").lower(), now_utc().isoformat()),
+        )
+        conn.commit()
+        conn.close()
+
+    def recent_unique(self) -> set[str]:
+        since = (now_utc() - timedelta(days=self.WINDOW_DAYS)).isoformat()
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT DISTINCT hashtag FROM hashtag_queries WHERE queried_at >= ?", (since,)
+        ).fetchall()
+        conn.close()
+        return {r["hashtag"] for r in rows}
+
+    def remaining(self) -> int:
+        return max(0, self.limit - len(self.recent_unique()))
+
+    def allows(self, hashtag: str) -> bool:
+        """이 해시태그를 지금 조회해도 되는가 (이미 본 것은 한도를 쓰지 않음)."""
+        seen = self.recent_unique()
+        if hashtag.lstrip("#").lower() in seen:
+            return True
+        return len(seen) < self.limit

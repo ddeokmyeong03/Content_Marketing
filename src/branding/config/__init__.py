@@ -1,4 +1,4 @@
-from .brand_config import BrandConfig, load_brand_config
+from .brand_config import AnalysisConfig, BrandConfig, CarouselConfig, load_brand_config
 from .settings import Settings, get_settings
 from .runtime import resolve_settings
 

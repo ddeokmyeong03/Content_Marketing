@@ -27,6 +27,10 @@ Instagram · Threads **개인 브랜드 콘텐츠 운영 자동화 시스템**.
 | `src/branding/publisher/` | Threads/Instagram 발행 + 상태 전이 |
 | `src/branding/scheduler/` | APScheduler 6개 잡 (무인 운영) |
 | `src/branding/web/` | FastAPI 운영 대시보드 + 단일 페이지 UI |
+| `src/branding/render/` | 캐러셀 텍스트 카드 — `card.py`(HTML 생성, 순수함수) `png.py`(크로미엄) `service.py` |
+| `src/branding/upload/` | 렌더 PNG → 공개 URL — `directory.py`(정적서버) `s3.py`(S3호환) `service.py` |
+| `src/branding/discovery/` | 타깃 발굴 — `scoring.py`(우선순위, 순수계산) `service.py`(해시태그·business_discovery) |
+| `src/branding/security/` | 자격증명 저장 암호화 (Fernet, 평문 하위호환) |
 | `src/branding/diagnostics.py` | 연결 진단 (키·토큰·ID 검증, 자동 수정) |
 | `docs/` | `USAGE`(실행) `GROWTH_ANALYSIS`(BGI 설계) `BUSINESS`(판매전략) `PITCH`(광고·랜딩) `HANDOFF`(진행상황) |
 
@@ -50,6 +54,10 @@ branding doctor run --fix       # 연결 진단 (문제 생기면 먼저 이것)
 branding plan generate --captions
 branding queue list / approve <id>
 branding post now <id>
+branding render check / sample / slides <id>   # 캐러셀 텍스트 카드 → PNG
+branding upload check / slides <id> / status <id>   # PNG → 공개 URL (발행 전 필수)
+branding secrets status / migrate    # 자격증명 암호화 상태·전환
+branding target discover / checklist / done <id>   # 타깃 발굴 (실행은 사람이)
 branding engage sync / list / reply <id>
 branding insights sync / breakouts / deconstruct / attribution
 branding serve run              # 스케줄러 데몬
@@ -63,9 +71,12 @@ python scripts/demo_seed.py     # 키 없이 분석 기능 시연용 가짜 데�
   ToS 위반 → 계정 정지 위험. 타깃 *발굴*까지만 자동화하고 실행은 사람이 한다.
 - **설득은 사실 기반.** `psychology.banned_tactics`(허위 희소성·거짓 수치·낚시성 과장) 준수.
   제품 철학이자 마케팅 카피 톤이기도 함.
-- **Instagram 발행은 공개 이미지 URL 필수** — `content.image_urls`가 비면 발행 불가.
-- **AI 이미지 모델은 한글 텍스트가 자주 깨진다** — 텍스트 카드는 템플릿 렌더링 권장,
-  AI 이미지는 무텍스트 배경/일러스트용.
+- **Instagram 발행은 공개 이미지 URL 필수** — 캐러셀은 `render slides` → `upload slides`로
+  `slide.image_url`을 채워야 발행된다. 하나라도 비면 발행이 막히고 빠진 번호를 알려준다.
+- **AI 이미지 모델은 한글 텍스트가 자주 깨진다** — 텍스트 카드는 `src/branding/render/`의
+  HTML/CSS → 헤드리스 크로미엄 PNG 렌더를 쓴다(한글 완벽·브랜드 일관). AI 이미지는
+  무텍스트 배경/일러스트용. 렌더는 `image_path`(로컬)까지만 채우며, 발행에 필요한
+  공개 URL(`image_url`)은 업로드 단계에서 채워진다.
 
 ## 커밋 규칙
 

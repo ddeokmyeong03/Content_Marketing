@@ -2,7 +2,9 @@ from datetime import datetime, date
 from typing import Optional
 from pydantic import BaseModel, Field
 
-from .enums import PostStatus, Platform, MediaType, ContentPillar, CommentStatus
+from .enums import (
+    PostStatus, Platform, MediaType, ContentPillar, CommentStatus, TargetKind, TargetStatus,
+)
 from ..utils.time import now_utc
 
 
@@ -13,6 +15,22 @@ class ImageBrief(BaseModel):
     color_hints: list[str] = Field(default_factory=list)
     midjourney_prompt: str
     dall_e_prompt: str
+
+
+class CarouselSlide(BaseModel):
+    """캐러셀 한 장의 구조.
+
+    슬라이드별 문구·강조·역할을 데이터로 들고 있어야 템플릿 렌더링(HTML/CSS→PNG)으로
+    글자 수와 레이아웃을 통제할 수 있다. `image_url`은 렌더링·업로드 후 채워진다.
+    """
+    index: int                                  # 1부터 시작하는 노출 순서
+    role: str = "body"                          # hook | body | proof | cta
+    headline: str = ""                          # 큰 글씨 (짧게)
+    body: str = ""                              # 보조 문구
+    emphasis: list[str] = Field(default_factory=list)  # 강조할 단어/구절
+    image_brief: Optional[str] = None           # 이 슬라이드용 이미지 지시
+    image_path: Optional[str] = None            # 렌더링된 로컬 PNG 경로 (업로드 전)
+    image_url: Optional[str] = None             # 업로드 후 공개 URL (발행에 사용)
 
 
 class HookVariant(BaseModel):
@@ -32,11 +50,30 @@ class PostContent(BaseModel):
     image_brief: Optional[ImageBrief] = None
     # 실제 발행에 사용할 공개 이미지 URL (Instagram 단일/카루셀). 이미지 생성·호스팅 후 채워짐.
     image_urls: list[str] = Field(default_factory=list)
+    # 캐러셀 슬라이드 구조 (있으면 발행 순서·이미지의 기준이 된다)
+    slides: list[CarouselSlide] = Field(default_factory=list)
     # 참여 엔진 산출물
     hook_variants: list[HookVariant] = Field(default_factory=list)
     chosen_hook: Optional[str] = None          # 캡션 첫 줄로 채택된 훅
     engagement_score: Optional[int] = None      # 최종 캡션 예측 참여 점수 (0-100)
     engagement_notes: Optional[str] = None      # 개선 코멘트/평가 근거
+
+    def ordered_slides(self) -> list["CarouselSlide"]:
+        """노출 순서대로 정렬된 슬라이드."""
+        return sorted(self.slides, key=lambda s: s.index)
+
+    def publish_image_urls(self) -> list[str]:
+        """발행에 사용할 공개 이미지 URL(순서대로).
+
+        슬라이드 구조가 있으면 그 순서를 따르고, 없으면 기존 `image_urls`를 쓴다.
+        """
+        if self.slides:
+            return [s.image_url for s in self.ordered_slides() if s.image_url]
+        return list(self.image_urls)
+
+    def missing_slide_images(self) -> list[int]:
+        """이미지 URL이 아직 없는 슬라이드 번호 목록 (발행 전 점검용)."""
+        return [s.index for s in self.ordered_slides() if not s.image_url]
 
 
 class Post(BaseModel):
@@ -54,6 +91,10 @@ class Post(BaseModel):
     created_at: datetime = Field(default_factory=now_utc)
     week_number: int = Field(default=0)
     plan_id: Optional[int] = None
+    # 발행 재시도 상태 (PostRepository 전용 메서드가 갱신, save()는 건드리지 않음)
+    publish_attempts: int = 0
+    next_retry_at: Optional[datetime] = None   # None = 재시도 예정 없음(영구 실패/정상)
+    last_error: Optional[str] = None
 
     def full_caption_ko(self) -> str:
         """해시태그 포함 최종 한국어 캡션 반환"""
@@ -148,6 +189,33 @@ class BreakoutPattern(BaseModel):
     confidence: int = 0               # 0-100
     metrics_snapshot: dict = Field(default_factory=dict)
     detected_at: datetime = Field(default_factory=now_utc)
+
+
+class TargetCandidate(BaseModel):
+    """발굴된 참여 대상 (게시물 또는 계정).
+
+    ⚠️ 이 데이터는 **사람이 실행할 목록**이다. 타 계정 팔로우·좋아요 자동화는
+    공식 API에 엔드포인트가 없고 비공식 자동화는 ToS 위반이라 계정 정지 위험이 있다.
+    발굴·점수화까지만 자동화하고 실제 반응은 운영자가 직접 한다.
+    """
+    id: Optional[int] = None
+    platform: Platform = Platform.INSTAGRAM
+    kind: TargetKind = TargetKind.POST
+    external_id: str                      # 게시물/계정의 플랫폼 ID
+    permalink: Optional[str] = None       # 사람이 열어볼 링크
+    username: Optional[str] = None        # 계정일 때 (해시태그 게시물은 API가 주지 않음)
+    source: str = ""                      # 발굴 경로 (해시태그명 / 시드 계정)
+    caption_excerpt: str = ""             # 무엇에 반응할지 판단할 최소 맥락
+    followers_count: int = 0
+    like_count: int = 0
+    comments_count: int = 0
+    engagement_rate: float = 0.0
+    score: float = 0.0                    # 0-100 우선순위
+    reasons: list[str] = Field(default_factory=list)
+    status: TargetStatus = TargetStatus.NEW
+    note: str = ""
+    discovered_at: datetime = Field(default_factory=now_utc)
+    actioned_at: Optional[datetime] = None
 
 
 class ContentPlanTopic(BaseModel):

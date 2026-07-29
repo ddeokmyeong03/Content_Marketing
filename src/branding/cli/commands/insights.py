@@ -1,16 +1,26 @@
+from typing import Optional
+
 import typer
 from rich.console import Console
 from rich.table import Table
 from rich import box
 
-from ...analysis import BreakoutService
-from ...config import get_settings, load_brand_config
+from ...analysis import MODE_INSUFFICIENT, MODE_ZSCORE, BreakoutService
+from ...config import AnalysisConfig, get_settings, load_brand_config
 from ...db import AccountMetricsRepository, BreakoutPatternRepository, MetricsRepository, init_db
 from ...insights import InsightsService
 from ...models.enums import Platform
 
 app = typer.Typer(help="발행 성과 인사이트 수집 및 조회")
 console = Console()
+
+
+def _analysis_config(settings) -> AnalysisConfig:
+    """브레이크아웃 판정 기준. 브랜드 설정이 없어도 진단은 되도록 기본값으로 폴백."""
+    try:
+        return load_brand_config(settings.brand_config_path).analysis
+    except FileNotFoundError:
+        return AnalysisConfig()
 
 
 @app.command("sync")
@@ -68,14 +78,41 @@ def account_growth(
 @app.command("breakouts")
 def breakouts(
     weeks: int = typer.Option(8, "--weeks", "-w", help="분석 기간(주)"),
-    threshold: float = typer.Option(2.5, "--threshold", "-z", help="브레이크아웃 z 임계값"),
+    threshold: Optional[float] = typer.Option(
+        None, "--threshold", "-z", help="브레이크아웃 z 임계값 (기본: brand config)"
+    ),
     all_posts: bool = typer.Option(False, "--all", help="브레이크아웃 외 전체 점수도 표시"),
 ):
     """팔로워 대비 압도적으로 뜬 게시물(브레이크아웃) 탐지."""
     settings = get_settings()
     init_db(settings.db_path)
+    cfg = _analysis_config(settings)
+    z = threshold if threshold is not None else cfg.z_threshold
     svc = BreakoutService(settings)
-    rows = svc.analyze(weeks=weeks, z_threshold=threshold)
+    rows = svc.analyze(
+        weeks=weeks,
+        z_threshold=z,
+        min_samples=cfg.min_samples,
+        provisional_ratio=cfg.provisional_ratio,
+    )
+
+    # 표본이 부족해 '판정을 못 한' 것과 '터진 게 없는' 것을 구분해서 알린다
+    for cov in svc.coverage(weeks=weeks, min_samples=cfg.min_samples):
+        if cov.mode == MODE_ZSCORE:
+            continue
+        if cov.mode == MODE_INSUFFICIENT:
+            console.print(
+                f"[yellow]⚠ {cov.platform.value}: 게시물 {cov.sample_size}개 — "
+                f"비교 표본이 부족해 판정하지 않습니다. "
+                f"정식 판정까지 {cov.needed_for_zscore}개 더 필요합니다.[/yellow]"
+            )
+        else:
+            console.print(
+                f"[yellow]⚠ {cov.platform.value}: 게시물 {cov.sample_size}개 — "
+                f"잠정 판정 모드(신뢰도 {cov.confidence}). "
+                f"정식 판정까지 {cov.needed_for_zscore}개 더 필요합니다.[/yellow]"
+            )
+
     if not all_posts:
         rows = [r for r in rows if r.result.is_breakout]
     if not rows:
@@ -85,27 +122,37 @@ def breakouts(
         )
         return
 
-    table = Table(title=f"브레이크아웃 (최근 {weeks}주, z≥{threshold})", box=box.ROUNDED)
+    table = Table(title=f"브레이크아웃 (최근 {weeks}주, z≥{z})", box=box.ROUNDED)
     table.add_column("점수", justify="right", width=6)
     table.add_column("", width=3)
     table.add_column("플랫폼", width=9)
-    table.add_column("주제", width=30)
-    table.add_column("이상치 지표", width=28)
+    table.add_column("주제", width=28)
+    table.add_column("판정", width=12)
+    table.add_column("이상치 지표", width=26)
     for r in rows:
         flag = "🚀" if r.result.is_breakout else ""
         reasons = ", ".join(r.result.reasons) or "-"
         color = "green" if r.result.is_breakout else "dim"
+        if r.result.is_provisional:
+            verdict = f"[yellow]잠정 {r.result.confidence}[/yellow]"
+        else:
+            verdict = f"[dim]확정 {r.result.confidence}[/dim]"
         table.add_row(
             f"[{color}]{r.result.breakout_score}[/{color}]",
             flag,
             r.post.platform.value,
-            (r.post.topic or "")[:28],
+            (r.post.topic or "")[:26],
+            verdict,
             reasons,
         )
     console.print(table)
     console.print(
         "[dim]이상치 지표: reach_rate(확산) · share_rate · follow_rate(성장) · "
         "save_rate · interaction_rate[/dim]"
+    )
+    console.print(
+        "[dim]판정: 확정=z-score(표본 충분) · 잠정=중앙값 대비 배수(표본 부족, 참고용) "
+        "· 숫자는 신뢰도(0-100)[/dim]"
     )
 
 
@@ -152,6 +199,11 @@ def attribution(
 def deconstruct(
     weeks: int = typer.Option(8, "--weeks", "-w", help="분석 기간(주)"),
     limit: int = typer.Option(5, "--limit", "-n", help="이번에 분석할 최대 개수"),
+    include_provisional: bool = typer.Option(
+        False,
+        "--include-provisional",
+        help="표본 부족으로 잠정 판정된 게시물도 역설계 (초기 계정용, 신호가 약할 수 있음)",
+    ),
 ):
     """브레이크아웃 게시물을 AI로 역설계해 '승리 공식'으로 저장."""
     settings = get_settings()
@@ -165,9 +217,15 @@ def deconstruct(
         patterns = svc.deconstruct_new(
             brand, settings.anthropic_api_key, weeks=weeks, limit=limit,
             model=settings.anthropic_model,
+            include_provisional=include_provisional,
         )
     if not patterns:
         console.print("[dim]새로 역설계할 브레이크아웃이 없습니다. (insights breakouts로 확인)[/dim]")
+        if not include_provisional:
+            console.print(
+                "[dim]표본이 적은 초기 계정이라면 --include-provisional 로 "
+                "잠정 판정까지 포함할 수 있습니다.[/dim]"
+            )
         return
     console.print(f"[green]✓ {len(patterns)}개 승리 공식 도출[/green]")
     for p in patterns:

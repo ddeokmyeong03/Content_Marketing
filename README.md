@@ -30,6 +30,14 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 | `branding post now <id>` | 특정 게시물 즉시 발행 |
 | `branding token set -p threads -t <TOKEN>` | 액세스 토큰 저장(.env보다 우선) |
 | `branding token refresh [--force]` | 만료 임박 롱리브드 토큰 갱신 |
+| `branding render slides <id>` | 캐러셀 슬라이드를 텍스트 카드 PNG로 렌더링 |
+| `branding render sample` | 샘플 카드 1장 렌더링 (폰트·색상 확인용) |
+| `branding render check` | 렌더링 환경 점검 (브라우저 사용 가능 여부) |
+| `branding upload slides <id>` | 렌더된 카드를 공개 URL로 업로드 (발행 전 필수) |
+| `branding upload status <id>` | 슬라이드별 렌더·업로드 상태 확인 |
+| `branding upload check` | 업로드 설정 점검 |
+| `branding target discover` / `checklist` / `done <id>` | 타깃 발굴 + 일일 실행 체크리스트 |
+| `branding secrets status` / `migrate` / `init` | 자격증명 암호화 상태·마이그레이션·키 생성 |
 | `branding engage sync` | 댓글 수집 + AI 답글 초안 생성 |
 | `branding engage list` / `reply <id>` / `auto` | 답글 검토·발행 |
 | `branding insights sync` | 발행 게시물 + 계정 성과 수집 |
@@ -69,6 +77,10 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 - **자기평가·개선 루프** — 생성 후 루브릭으로 참여 점수를 매기고, `min_hook_score` 미만이면 평가를 반영해 1회 자동 재생성 (`generate_optimized_caption`)
 - **성과 측정 → 피드백 루프** — 발행 후 IG/Threads 실제 지표(저장·댓글·공유·도달)를 수집(`insights sync`)하고, 상위 성과 주제/훅을 **다음 주 기획에 재주입**(`MetricsRepository.top_performers` → 기획 프롬프트). 예측 → 측정 → 학습이 순환합니다.
 - **브레이크아웃 성장 분석 (BGI)** — 팔로워 대비 압도적으로 뜬 게시물을 탐지(`insights breakouts`)하고 AI로 왜 떴는지 역설계(`insights deconstruct`)해 '승리 공식'으로 축적, 다음 기획·캡션 생성에 자동 재주입(폐루프). 상세: `docs/GROWTH_ANALYSIS.md`
+- **표본이 적은 초기 계정** — z-score는 분포가 있어야 의미가 있으므로, 게시물이
+  `analysis.min_samples`(기본 8) 미만이면 **잠정 판정 모드**로 내려가 중앙값 대비
+  배수로 판정하고 낮은 신뢰도를 함께 표기합니다. 3개 미만이면 아예 판정하지 않고,
+  "정식 판정까지 N개 더 필요"를 알려 결과가 빈 이유를 구분해 줍니다.
 
 > 니치·청중·심리 레버·목표 지표·설득 강도는 모두 `brand/config.yaml`에서 **코드 수정 없이** 조정합니다.
 
@@ -82,9 +94,61 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 - **골든아워 알림**: 발행 직후 집중 응대 시간을 알림으로 통지 (초기 참여가 도달을 좌우).
 - **참여 최적화**: `engagement.primary_metric`(saves/comments/shares)에 맞춰 훅·CTA를 설계.
 
+### 타깃 발굴 — 반응할 대상 찾기
+
+도달을 넓히려면 내 게시물만으로는 부족하고, 니치 안에서 남의 글에 반응해야 합니다.
+공식 **읽기 전용** API로 대상을 찾아 점수를 매기고 **일일 실행 체크리스트**를 만듭니다.
+
+```bash
+branding target discover     # 해시태그·시드 계정에서 후보 발굴
+branding target checklist    # 오늘 실행할 목록 (점수 상위)
+branding target done <id>    # 직접 반응한 뒤 완료 표시
+branding target quota        # 해시태그 주간 한도 확인
+```
+
+점수는 **하루에 쓸 시간이 정해져 있다**는 전제로 매깁니다:
+
+- **게시물** — 같은 해시태그 안에서 상대적으로 반응이 좋고(살아있는 청중), 최근이며,
+  댓글이 과밀하지 않은 글(내 댓글이 묻히지 않는 글)
+- **계정** — 팔로워가 목표 구간에 있고(너무 크면 반응을 못 받음), 참여율이 높은 계정
+
+> Instagram 해시태그 검색은 **7일간 고유 30개** 제한이 있습니다. 모르고 소진하면
+> 일주일간 발굴이 막히므로 조회 이력을 추적해 남은 여유를 알려주고, 한도를 넘기면
+> 호출하지 않습니다. 이미 조회한 해시태그 재조회는 한도를 쓰지 않습니다.
+
 > ⚠️ **타 계정 팔로우·좋아요는 자동화하지 않습니다.** 공식 Graph API에 해당 엔드포인트가
-> 없고, 비공식 자동화는 플랫폼 정책 위반으로 계정 정지 위험이 있습니다. 타깃 발굴까지는
-> 자동화하되 실제 팔로우·반응은 사람이 직접 하는 방식을 권장합니다.
+> 없고, 비공식 자동화는 플랫폼 정책 위반으로 계정 정지 위험이 있습니다. **발굴·점수화까지만
+> 자동화하고 실제 반응은 운영자가 직접 합니다.**
+
+## 보안
+
+DB에는 Anthropic 키·Meta 토큰·오브젝트 스토리지 키가 들어갑니다. DFY로 **고객 계정의**
+자격증명까지 다루게 되면 평문 저장은 사고 한 번에 치명적이므로, 저장 시점에 암호화합니다.
+
+```bash
+branding secrets init      # 마스터 키 생성 (환경변수로 관리할 때)
+branding secrets status    # 암호화 상태 확인
+branding secrets migrate   # 기존 평문 값을 일괄 암호화
+```
+
+- 키는 `BRANDING_SECRET_KEY` 환경변수, 없으면 `{DATA_DIR}/.secret_key`(권한 0600)를
+  자동 생성해 사용합니다. **이 키를 잃으면 저장된 값을 복호화할 수 없으니 백업하세요.**
+- 기존 평문 DB는 그대로 읽히며(하위 호환), 다음 쓰기나 `secrets migrate`에서 암호화됩니다.
+- **막는 것**: DB 파일 유출·백업 노출·실수로 저장소에 커밋.
+  **못 막는 것**: 실행 중인 호스트 전체가 장악된 경우(키가 같은 호스트에 있으므로).
+
+### 대시보드 접근 제어
+
+대시보드는 API 키 등록·발행·승인이 가능한 **운영 콘솔**입니다. 두 겹으로 막습니다:
+
+1. `WEB_AUTH_PASSWORD`를 설정하면 모든 엔드포인트에 HTTP Basic 인증이 걸립니다
+2. 비밀번호가 없으면 **루프백 바인딩만 허용**되고, `--host 0.0.0.0` 등 외부 노출 시도는
+   거부됩니다
+
+즉 인증 없는 콘솔이 실수로 공개되는 경로가 없습니다.
+
+> HTTP Basic은 ASCII만 안전하게 전달합니다. 한글 비밀번호를 쓰면 로그인이 되지 않으며,
+> 설정 시 경고 로그로 알려 줍니다.
 
 ## 자동화 수준
 
@@ -96,4 +160,75 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 
 - **Threads**: 텍스트 발행은 토큰 + `META_THREADS_USER_ID`만 있으면 동작.
 - **Instagram**: Graph API가 **공개 이미지 URL**을 요구합니다. 이미지 생성·호스팅은
-  아직 미구현이며, `content.image_urls`가 채워져야 발행됩니다.
+  아직 미구현이며, `content.slides[].image_url` 또는 `content.image_urls`가
+  채워져야 발행됩니다. 컨테이너는 생성 직후 바로 발행할 수 없어
+  `status_code`가 `FINISHED`가 될 때까지 폴링합니다(캐러셀은 자식 컨테이너까지 전부).
+
+### 캐러셀 텍스트 카드
+
+AI 이미지 모델은 한글을 자주 깨뜨립니다. 문구가 들어가는 카드는 **HTML/CSS로 만들어
+헤드리스 크로미엄으로 PNG를 굽습니다** — 한글이 완벽하고 브랜드 색·폰트가 매번 동일합니다.
+
+```bash
+pip install -e '.[render]' && playwright install chromium
+branding render check              # 환경 점검
+branding render sample             # 카드 1장 렌더 — 한글이 네모(□)면 폰트 문제
+branding render slides <post_id>   # 게시물의 슬라이드 전체 렌더
+```
+
+캐러셀 포스트를 생성하면 캡션과 함께 **슬라이드 문구(`slides[]`)**가 만들어집니다.
+슬라이드마다 역할(hook/body/proof/cta)·헤드라인·보조 문구·강조 단어를 가지며,
+분량은 `brand/config.yaml`의 `carousel.headline_max_chars` 등으로 통제합니다.
+한도를 넘으면 렌더러가 폰트를 줄여 담아내되 CLI가 경고로 알려 줍니다.
+
+> **한글 폰트가 필요합니다.** `carousel.font_family_css`의 폰트 중 하나가 실행 환경에
+> 설치돼 있어야 합니다(Pretendard, Noto Sans KR, 애플 SD 산돌고딕, 맑은 고딕 등).
+> 브라우저를 직접 설치할 수 없는 환경에서는 `BRANDING_CHROMIUM_PATH`로 실행 파일을 지정하세요.
+
+### 업로드 — 공개 URL 확보
+
+Instagram Graph API는 **공개적으로 접근 가능한 이미지 URL**을 요구합니다. 렌더 결과는
+`slide.image_path`(로컬)까지만 채워지므로, 업로드해 `slide.image_url`을 채워야 발행됩니다.
+
+```bash
+branding upload check              # 설정 점검
+branding upload slides <post_id>   # 렌더된 카드 업로드 → image_url 채움
+branding upload status <post_id>   # 슬라이드별 미렌더/렌더됨/업로드됨
+```
+
+호스팅 수단은 운영 환경마다 다르므로 업로더를 교체할 수 있습니다:
+
+| `UPLOAD_PROVIDER` | 용도 | 설정 |
+|---|---|---|
+| `dir` | 이미 정적 웹 서버(nginx·Netlify 등)가 있을 때 | `UPLOAD_DIR`, `UPLOAD_PUBLIC_BASE_URL` |
+| `s3` | AWS S3 · Cloudflare R2 · Backblaze B2 · MinIO | `S3_BUCKET`, `S3_ENDPOINT_URL`(비-AWS), `S3_REGION`, 키 |
+
+`s3`는 `pip install -e '.[upload]'`가 필요합니다.
+
+> ⚠️ **버킷·디렉터리가 인증 없이 열려 있어야** Instagram이 이미지를 가져갈 수 있습니다.
+> Cloudflare R2는 ACL을 지원하지 않으므로 버킷 정책·공개 도메인으로 설정하고,
+> 커스텀 도메인은 `UPLOAD_PUBLIC_BASE_URL`에 지정하세요.
+
+### 전체 흐름 (캐러셀)
+
+```
+plan generate --captions → (슬라이드 문구 생성)
+  → render slides <id>   → PNG (image_path)
+  → upload slides <id>   → 공개 URL (image_url)
+  → queue approve <id>   → post now <id>
+```
+
+대시보드 검토 큐에서 슬라이드 문구·렌더 미리보기·업로드 상태를 함께 확인할 수 있습니다.
+
+### 발행 실패와 재시도
+
+일시적 장애(레이트 리밋·5xx·네트워크 끊김)로 예약 게시물이 영구히 죽지 않도록
+두 겹으로 재시도합니다:
+
+1. **요청 단위** — `GraphHTTP`가 일시 오류를 지수 백오프로 즉시 재시도
+2. **잡 주기 단위** — 그래도 실패하면 `next_retry_at`을 예약해 스케줄러가 다음
+   주기에 다시 집어감 (`publish_max_attempts`회까지, 백오프 5→10→20분…)
+
+토큰·권한·입력 오류처럼 다시 보내도 결과가 같은 실패는 재시도하지 않고 즉시
+영구 실패로 확정하고 알립니다. 관련 설정: `publish_max_attempts`,
+`publish_retry_backoff_minutes`, `publish_retry_max_minutes`.
