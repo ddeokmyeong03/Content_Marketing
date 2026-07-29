@@ -71,6 +71,39 @@ def _read_or_create_keyfile(data_dir: Path) -> str:
     return key
 
 
+def read_keyfile(data_dir: Path | str) -> Optional[str]:
+    """저장된 키를 읽는다 (없으면 None) — 만들지는 않는다."""
+    keyfile = Path(data_dir) / KEYFILE_NAME
+    if not keyfile.exists():
+        return None
+    return keyfile.read_text(encoding="utf-8").strip() or None
+
+
+def write_keyfile(data_dir: Path | str, key: str) -> Path:
+    """키 파일을 새 키로 교체한다 (0600, 원자적).
+
+    임시 파일에 먼저 쓰고 교체한다 — 쓰다가 죽어서 반쪽짜리 키가 남으면
+    저장된 자격증명을 전부 잃기 때문.
+    """
+    keyfile = Path(data_dir) / KEYFILE_NAME
+    keyfile.parent.mkdir(parents=True, exist_ok=True)
+    tmp = keyfile.with_name(f"{KEYFILE_NAME}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, key.encode("utf-8"))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.replace(tmp, keyfile)
+    os.chmod(keyfile, 0o600)
+    return keyfile
+
+
+def env_key() -> str:
+    """환경변수로 지정된 키 (없으면 빈 문자열)."""
+    return os.environ.get(SECRET_KEY_ENV, "").strip()
+
+
 class SecretBox:
     """값을 암호화해 저장하고 읽을 때 복호화한다.
 
@@ -98,9 +131,8 @@ class SecretBox:
     @classmethod
     def for_data_dir(cls, data_dir: Path | str) -> "SecretBox":
         """환경변수 → 키파일 순으로 키를 해석해 만든다."""
-        env_key = os.environ.get(SECRET_KEY_ENV, "").strip()
-        if env_key:
-            return cls(env_key)
+        if key := env_key():
+            return cls(key)
         try:
             return cls(_read_or_create_keyfile(Path(data_dir)))
         except SecretsUnavailable:
