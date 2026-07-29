@@ -1,5 +1,8 @@
 .env
 data/
+# 자격증명 암호화 키 — 절대 커밋 금지 (유출되면 저장된 키·토큰이 모두 열린다)
+.secret_key
+**/.secret_key
 __pycache__/
 *.pyc
 *.pyo

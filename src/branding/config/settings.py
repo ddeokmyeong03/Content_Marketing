@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     # 토큰 자동 갱신
     token_refresh_threshold_days: int = 7  # 만료 N일 이내면 갱신
 
+    # 대시보드 인증 (비우면 인증 없음 — 루프백 바인딩에서만 허용됨)
+    web_auth_user: str = "admin"
+    web_auth_password: str = ""
+
     # 알림
     notify_webhook_url: str = ""         # Slack 호환 incoming webhook URL (비우면 콘솔만)
 

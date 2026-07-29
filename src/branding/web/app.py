@@ -25,6 +25,7 @@ from ..models import PostStatus
 from ..models.enums import CommentStatus, Platform
 from ..publisher import PublishService
 from ..services import generate_week
+from .auth import auth_dependencies
 from .jobs import JobManager
 
 TEMPLATE = Path(__file__).parent / "templates" / "dashboard.html"
@@ -50,7 +51,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     init_db(settings.db_path)
 
-    app = FastAPI(title="브랜딩 운영 대시보드", docs_url="/api/docs")
+    # 비밀번호가 설정돼 있으면 모든 엔드포인트에 인증을 건다
+    app = FastAPI(
+        title="브랜딩 운영 대시보드",
+        docs_url="/api/docs",
+        dependencies=auth_dependencies(settings),
+    )
     jobs = JobManager()
     posts = PostRepository(settings.db_path)
     plans = PlanRepository(settings.db_path)

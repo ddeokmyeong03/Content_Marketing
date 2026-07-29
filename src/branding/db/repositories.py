@@ -10,6 +10,7 @@ from ..models import (
 )
 from ..models.enums import Platform as _Platform
 from ..models.enums import Platform, MediaType, ContentPillar
+from ..security import SecretBox, is_encrypted
 from ..utils.time import now_utc, parse_dt
 from .database import get_connection
 
@@ -257,10 +258,15 @@ class PlanRepository:
 
 
 class SettingsStore:
-    """웹에서 등록한 런타임 설정(키·ID) 저장 (key-value). .env보다 우선 적용."""
+    """웹에서 등록한 런타임 설정(키·ID) 저장 (key-value). .env보다 우선 적용.
 
-    def __init__(self, db_path: str | Path):
+    값은 저장 시점에 암호화된다(`security.SecretBox`). 기존 평문 값도 그대로 읽히며
+    다음 쓰기에서 암호화된다.
+    """
+
+    def __init__(self, db_path: str | Path, box: Optional["SecretBox"] = None):
         self.db_path = db_path
+        self._box = box or SecretBox.for_db_path(db_path)
 
     def _conn(self) -> sqlite3.Connection:
         return get_connection(self.db_path)
@@ -270,29 +276,51 @@ class SettingsStore:
         conn.execute(
             """INSERT INTO settings_store (key, value, updated_at) VALUES (?, ?, ?)
                ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at""",
-            (key, value, now_utc().isoformat()),
+            (key, self._box.encrypt(value), now_utc().isoformat()),
         )
         conn.commit()
         conn.close()
 
     def get(self, key: str) -> Optional[str]:
         conn = self._conn()
-        row = conn.execute("SELECT value FROM settings_store WHERE key=?", (key,)).fetchone()
+        row = conn.execute(
+            "SELECT value FROM settings_store WHERE key=?", (key,)
+        ).fetchone()
         conn.close()
-        return row["value"] if row else None
+        return self._box.decrypt(row["value"]) if row else None
 
     def all(self) -> dict[str, str]:
         conn = self._conn()
         rows = conn.execute("SELECT key, value FROM settings_store").fetchall()
         conn.close()
+        return {r["key"]: self._box.decrypt(r["value"]) for r in rows if r["value"]}
+
+    def raw_all(self) -> dict[str, str]:
+        """복호화하지 않은 원본 값 — 마이그레이션 진단용."""
+        conn = self._conn()
+        rows = conn.execute("SELECT key, value FROM settings_store").fetchall()
+        conn.close()
         return {r["key"]: r["value"] for r in rows if r["value"]}
+
+    def reencrypt_all(self) -> list[str]:
+        """평문으로 저장된 값을 암호화해 다시 쓴다. 바뀐 키 목록을 돌려준다."""
+        changed = []
+        for key, value in self.raw_all().items():
+            if not is_encrypted(value):
+                self.set(key, value)
+                changed.append(key)
+        return changed
 
 
 class TokenRepository:
-    """Meta/Threads 액세스 토큰 영속화. 토큰 자동 갱신 시 사용."""
+    """Meta/Threads 액세스 토큰 영속화. 토큰 자동 갱신 시 사용.
 
-    def __init__(self, db_path: str | Path):
+    토큰은 저장 시점에 암호화된다(기존 평문 값도 그대로 읽힘).
+    """
+
+    def __init__(self, db_path: str | Path, box: Optional["SecretBox"] = None):
         self.db_path = db_path
+        self._box = box or SecretBox.for_db_path(db_path)
 
     def _conn(self) -> sqlite3.Connection:
         return get_connection(self.db_path)
@@ -315,7 +343,7 @@ class TokenRepository:
                    updated_at=excluded.updated_at""",
             (
                 platform,
-                access_token,
+                self._box.encrypt(access_token),
                 token_type,
                 expires_at.isoformat() if expires_at else None,
                 now_utc().isoformat(),
@@ -330,7 +358,24 @@ class TokenRepository:
             "SELECT access_token FROM token_store WHERE platform=?", (platform,)
         ).fetchone()
         conn.close()
-        return row["access_token"] if row else None
+        return self._box.decrypt(row["access_token"]) if row else None
+
+    def reencrypt_all(self) -> list[str]:
+        """평문으로 저장된 토큰을 암호화해 다시 쓴다. 바뀐 플랫폼 목록을 돌려준다."""
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT platform, access_token, token_type, expires_at FROM token_store"
+        ).fetchall()
+        conn.close()
+        changed = []
+        for r in rows:
+            if r["access_token"] and not is_encrypted(r["access_token"]):
+                self.upsert(
+                    r["platform"], r["access_token"], r["token_type"],
+                    parse_dt(r["expires_at"]) if r["expires_at"] else None,
+                )
+                changed.append(r["platform"])
+        return changed
 
     def get_expiry(self, platform: str) -> Optional[datetime]:
         conn = self._conn()

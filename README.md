@@ -36,6 +36,7 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 | `branding upload slides <id>` | 렌더된 카드를 공개 URL로 업로드 (발행 전 필수) |
 | `branding upload status <id>` | 슬라이드별 렌더·업로드 상태 확인 |
 | `branding upload check` | 업로드 설정 점검 |
+| `branding secrets status` / `migrate` / `init` | 자격증명 암호화 상태·마이그레이션·키 생성 |
 | `branding engage sync` | 댓글 수집 + AI 답글 초안 생성 |
 | `branding engage list` / `reply <id>` / `auto` | 답글 검토·발행 |
 | `branding insights sync` | 발행 게시물 + 계정 성과 수집 |
@@ -95,6 +96,36 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 > ⚠️ **타 계정 팔로우·좋아요는 자동화하지 않습니다.** 공식 Graph API에 해당 엔드포인트가
 > 없고, 비공식 자동화는 플랫폼 정책 위반으로 계정 정지 위험이 있습니다. 타깃 발굴까지는
 > 자동화하되 실제 팔로우·반응은 사람이 직접 하는 방식을 권장합니다.
+
+## 보안
+
+DB에는 Anthropic 키·Meta 토큰·오브젝트 스토리지 키가 들어갑니다. DFY로 **고객 계정의**
+자격증명까지 다루게 되면 평문 저장은 사고 한 번에 치명적이므로, 저장 시점에 암호화합니다.
+
+```bash
+branding secrets init      # 마스터 키 생성 (환경변수로 관리할 때)
+branding secrets status    # 암호화 상태 확인
+branding secrets migrate   # 기존 평문 값을 일괄 암호화
+```
+
+- 키는 `BRANDING_SECRET_KEY` 환경변수, 없으면 `{DATA_DIR}/.secret_key`(권한 0600)를
+  자동 생성해 사용합니다. **이 키를 잃으면 저장된 값을 복호화할 수 없으니 백업하세요.**
+- 기존 평문 DB는 그대로 읽히며(하위 호환), 다음 쓰기나 `secrets migrate`에서 암호화됩니다.
+- **막는 것**: DB 파일 유출·백업 노출·실수로 저장소에 커밋.
+  **못 막는 것**: 실행 중인 호스트 전체가 장악된 경우(키가 같은 호스트에 있으므로).
+
+### 대시보드 접근 제어
+
+대시보드는 API 키 등록·발행·승인이 가능한 **운영 콘솔**입니다. 두 겹으로 막습니다:
+
+1. `WEB_AUTH_PASSWORD`를 설정하면 모든 엔드포인트에 HTTP Basic 인증이 걸립니다
+2. 비밀번호가 없으면 **루프백 바인딩만 허용**되고, `--host 0.0.0.0` 등 외부 노출 시도는
+   거부됩니다
+
+즉 인증 없는 콘솔이 실수로 공개되는 경로가 없습니다.
+
+> HTTP Basic은 ASCII만 안전하게 전달합니다. 한글 비밀번호를 쓰면 로그인이 되지 않으며,
+> 설정 시 경고 로그로 알려 줍니다.
 
 ## 자동화 수준
 
