@@ -59,6 +59,20 @@ CREATE TABLE IF NOT EXISTS publish_log (
     response_json TEXT
 );
 
+-- 플랫폼별 발행 성공 기록. platform=both 인 게시물은 한 번의 발행 시도에서 두 곳을
+-- 순서대로 호출하는데, 앞은 성공하고 뒤가 실패하면 재시도가 성공한 쪽을 다시 올려
+-- 중복 게시가 된다. 여기에 성공을 즉시 남겨 재시도가 남은 플랫폼만 집어가게 한다.
+CREATE TABLE IF NOT EXISTS post_publications (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id       INTEGER NOT NULL REFERENCES posts(id),
+    platform      TEXT NOT NULL,
+    meta_post_id  TEXT,
+    permalink     TEXT,
+    published_at  DATETIME NOT NULL,
+    response_json TEXT,
+    UNIQUE(post_id, platform)
+);
+
 CREATE TABLE IF NOT EXISTS post_metrics (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     post_id            INTEGER REFERENCES posts(id),
