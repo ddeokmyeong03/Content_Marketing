@@ -2,7 +2,9 @@ from datetime import datetime, date
 from typing import Optional
 from pydantic import BaseModel, Field
 
-from .enums import PostStatus, Platform, MediaType, ContentPillar, CommentStatus
+from .enums import (
+    PostStatus, Platform, MediaType, ContentPillar, CommentStatus, TargetKind, TargetStatus,
+)
 from ..utils.time import now_utc
 
 
@@ -187,6 +189,33 @@ class BreakoutPattern(BaseModel):
     confidence: int = 0               # 0-100
     metrics_snapshot: dict = Field(default_factory=dict)
     detected_at: datetime = Field(default_factory=now_utc)
+
+
+class TargetCandidate(BaseModel):
+    """발굴된 참여 대상 (게시물 또는 계정).
+
+    ⚠️ 이 데이터는 **사람이 실행할 목록**이다. 타 계정 팔로우·좋아요 자동화는
+    공식 API에 엔드포인트가 없고 비공식 자동화는 ToS 위반이라 계정 정지 위험이 있다.
+    발굴·점수화까지만 자동화하고 실제 반응은 운영자가 직접 한다.
+    """
+    id: Optional[int] = None
+    platform: Platform = Platform.INSTAGRAM
+    kind: TargetKind = TargetKind.POST
+    external_id: str                      # 게시물/계정의 플랫폼 ID
+    permalink: Optional[str] = None       # 사람이 열어볼 링크
+    username: Optional[str] = None        # 계정일 때 (해시태그 게시물은 API가 주지 않음)
+    source: str = ""                      # 발굴 경로 (해시태그명 / 시드 계정)
+    caption_excerpt: str = ""             # 무엇에 반응할지 판단할 최소 맥락
+    followers_count: int = 0
+    like_count: int = 0
+    comments_count: int = 0
+    engagement_rate: float = 0.0
+    score: float = 0.0                    # 0-100 우선순위
+    reasons: list[str] = Field(default_factory=list)
+    status: TargetStatus = TargetStatus.NEW
+    note: str = ""
+    discovered_at: datetime = Field(default_factory=now_utc)
+    actioned_at: Optional[datetime] = None
 
 
 class ContentPlanTopic(BaseModel):

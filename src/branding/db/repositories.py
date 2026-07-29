@@ -6,7 +6,7 @@ import sqlite3
 
 from ..models import (
     Post, ContentPlan, ContentPlanTopic, PostStatus, PostContent, PostMetric, AccountMetric,
-    BreakoutPattern, Comment, CommentStatus,
+    BreakoutPattern, Comment, CommentStatus, TargetCandidate, TargetKind, TargetStatus,
 )
 from ..models.enums import Platform as _Platform
 from ..models.enums import Platform, MediaType, ContentPillar
@@ -774,3 +774,167 @@ class BreakoutPatternRepository:
         ).fetchall()
         conn.close()
         return [self._row(r) for r in rows]
+
+
+class TargetRepository:
+    """발굴된 참여 대상 저장.
+
+    같은 게시물·계정을 매일 다시 발굴해도 중복이 쌓이지 않도록
+    (platform, kind, external_id)로 upsert 하며, 사람이 이미 처리한 항목의
+    상태는 덮어쓰지 않는다.
+    """
+
+    def __init__(self, db_path: str | Path):
+        self.db_path = db_path
+
+    def _conn(self) -> sqlite3.Connection:
+        return get_connection(self.db_path)
+
+    def _row(self, row: sqlite3.Row) -> TargetCandidate:
+        return TargetCandidate(
+            id=row["id"],
+            platform=Platform(row["platform"]),
+            kind=TargetKind(row["kind"]),
+            external_id=row["external_id"],
+            permalink=row["permalink"],
+            username=row["username"],
+            source=row["source"] or "",
+            caption_excerpt=row["caption_excerpt"] or "",
+            followers_count=row["followers_count"] or 0,
+            like_count=row["like_count"] or 0,
+            comments_count=row["comments_count"] or 0,
+            engagement_rate=row["engagement_rate"] or 0.0,
+            score=row["score"] or 0.0,
+            reasons=json.loads(row["reasons_json"]) if row["reasons_json"] else [],
+            status=TargetStatus(row["status"]),
+            note=row["note"] or "",
+            discovered_at=parse_dt(row["discovered_at"]),
+            actioned_at=parse_dt(row["actioned_at"]),
+        )
+
+    def upsert(self, c: TargetCandidate) -> TargetCandidate:
+        """새 후보는 추가하고, 이미 있으면 지표·점수만 갱신한다.
+
+        status/note/actioned_at 은 사람의 판단이므로 덮어쓰지 않는다.
+        """
+        conn = self._conn()
+        conn.execute(
+            """INSERT INTO target_candidates
+               (platform, kind, external_id, permalink, username, source, caption_excerpt,
+                followers_count, like_count, comments_count, engagement_rate, score,
+                reasons_json, status, note, discovered_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(platform, kind, external_id) DO UPDATE SET
+                   permalink=excluded.permalink,
+                   username=excluded.username,
+                   source=excluded.source,
+                   caption_excerpt=excluded.caption_excerpt,
+                   followers_count=excluded.followers_count,
+                   like_count=excluded.like_count,
+                   comments_count=excluded.comments_count,
+                   engagement_rate=excluded.engagement_rate,
+                   score=excluded.score,
+                   reasons_json=excluded.reasons_json""",
+            (
+                c.platform.value, c.kind.value, c.external_id, c.permalink, c.username,
+                c.source, c.caption_excerpt, c.followers_count, c.like_count,
+                c.comments_count, c.engagement_rate, c.score,
+                json.dumps(c.reasons, ensure_ascii=False), c.status.value, c.note,
+                c.discovered_at.isoformat(),
+            ),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM target_candidates WHERE platform=? AND kind=? AND external_id=?",
+            (c.platform.value, c.kind.value, c.external_id),
+        ).fetchone()
+        conn.close()
+        return self._row(row)
+
+    def get_by_id(self, candidate_id: int) -> Optional[TargetCandidate]:
+        conn = self._conn()
+        row = conn.execute(
+            "SELECT * FROM target_candidates WHERE id=?", (candidate_id,)
+        ).fetchone()
+        conn.close()
+        return self._row(row) if row else None
+
+    def list_by_status(
+        self, status: TargetStatus = TargetStatus.NEW, limit: int = 50
+    ) -> list[TargetCandidate]:
+        """점수 높은 순 — 하루에 쓸 시간은 정해져 있으니 가장 값진 것부터."""
+        conn = self._conn()
+        rows = conn.execute(
+            """SELECT * FROM target_candidates WHERE status=?
+               ORDER BY score DESC, discovered_at DESC LIMIT ?""",
+            (status.value, limit),
+        ).fetchall()
+        conn.close()
+        return [self._row(r) for r in rows]
+
+    def set_status(
+        self, candidate_id: int, status: TargetStatus, note: str = ""
+    ) -> Optional[TargetCandidate]:
+        conn = self._conn()
+        actioned = now_utc().isoformat() if status != TargetStatus.NEW else None
+        conn.execute(
+            "UPDATE target_candidates SET status=?, note=?, actioned_at=? WHERE id=?",
+            (status.value, note, actioned, candidate_id),
+        )
+        conn.commit()
+        conn.close()
+        return self.get_by_id(candidate_id)
+
+    def counts(self) -> dict[str, int]:
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT status, COUNT(*) AS n FROM target_candidates GROUP BY status"
+        ).fetchall()
+        conn.close()
+        return {r["status"]: r["n"] for r in rows}
+
+
+class HashtagQuotaRepository:
+    """해시태그 검색 사용량 추적.
+
+    Instagram은 7일 동안 **고유 해시태그 30개**까지만 조회를 허용한다. 이미 조회한
+    해시태그를 다시 보는 것은 무료지만, 새 해시태그는 한도를 소모한다. 모르고 쓰면
+    일주일간 발굴이 막히므로 남은 여유를 계산해 준다.
+    """
+
+    WINDOW_DAYS = 7
+
+    def __init__(self, db_path: str | Path, limit: int = 30):
+        self.db_path = db_path
+        self.limit = limit
+
+    def _conn(self) -> sqlite3.Connection:
+        return get_connection(self.db_path)
+
+    def record(self, hashtag: str) -> None:
+        conn = self._conn()
+        conn.execute(
+            "INSERT INTO hashtag_queries (hashtag, queried_at) VALUES (?, ?)",
+            (hashtag.lstrip("#").lower(), now_utc().isoformat()),
+        )
+        conn.commit()
+        conn.close()
+
+    def recent_unique(self) -> set[str]:
+        since = (now_utc() - timedelta(days=self.WINDOW_DAYS)).isoformat()
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT DISTINCT hashtag FROM hashtag_queries WHERE queried_at >= ?", (since,)
+        ).fetchall()
+        conn.close()
+        return {r["hashtag"] for r in rows}
+
+    def remaining(self) -> int:
+        return max(0, self.limit - len(self.recent_unique()))
+
+    def allows(self, hashtag: str) -> bool:
+        """이 해시태그를 지금 조회해도 되는가 (이미 본 것은 한도를 쓰지 않음)."""
+        seen = self.recent_unique()
+        if hashtag.lstrip("#").lower() in seen:
+            return True
+        return len(seen) < self.limit

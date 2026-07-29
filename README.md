@@ -36,6 +36,7 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 | `branding upload slides <id>` | 렌더된 카드를 공개 URL로 업로드 (발행 전 필수) |
 | `branding upload status <id>` | 슬라이드별 렌더·업로드 상태 확인 |
 | `branding upload check` | 업로드 설정 점검 |
+| `branding target discover` / `checklist` / `done <id>` | 타깃 발굴 + 일일 실행 체크리스트 |
 | `branding secrets status` / `migrate` / `init` | 자격증명 암호화 상태·마이그레이션·키 생성 |
 | `branding engage sync` | 댓글 수집 + AI 답글 초안 생성 |
 | `branding engage list` / `reply <id>` / `auto` | 답글 검토·발행 |
@@ -93,9 +94,31 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 - **골든아워 알림**: 발행 직후 집중 응대 시간을 알림으로 통지 (초기 참여가 도달을 좌우).
 - **참여 최적화**: `engagement.primary_metric`(saves/comments/shares)에 맞춰 훅·CTA를 설계.
 
+### 타깃 발굴 — 반응할 대상 찾기
+
+도달을 넓히려면 내 게시물만으로는 부족하고, 니치 안에서 남의 글에 반응해야 합니다.
+공식 **읽기 전용** API로 대상을 찾아 점수를 매기고 **일일 실행 체크리스트**를 만듭니다.
+
+```bash
+branding target discover     # 해시태그·시드 계정에서 후보 발굴
+branding target checklist    # 오늘 실행할 목록 (점수 상위)
+branding target done <id>    # 직접 반응한 뒤 완료 표시
+branding target quota        # 해시태그 주간 한도 확인
+```
+
+점수는 **하루에 쓸 시간이 정해져 있다**는 전제로 매깁니다:
+
+- **게시물** — 같은 해시태그 안에서 상대적으로 반응이 좋고(살아있는 청중), 최근이며,
+  댓글이 과밀하지 않은 글(내 댓글이 묻히지 않는 글)
+- **계정** — 팔로워가 목표 구간에 있고(너무 크면 반응을 못 받음), 참여율이 높은 계정
+
+> Instagram 해시태그 검색은 **7일간 고유 30개** 제한이 있습니다. 모르고 소진하면
+> 일주일간 발굴이 막히므로 조회 이력을 추적해 남은 여유를 알려주고, 한도를 넘기면
+> 호출하지 않습니다. 이미 조회한 해시태그 재조회는 한도를 쓰지 않습니다.
+
 > ⚠️ **타 계정 팔로우·좋아요는 자동화하지 않습니다.** 공식 Graph API에 해당 엔드포인트가
-> 없고, 비공식 자동화는 플랫폼 정책 위반으로 계정 정지 위험이 있습니다. 타깃 발굴까지는
-> 자동화하되 실제 팔로우·반응은 사람이 직접 하는 방식을 권장합니다.
+> 없고, 비공식 자동화는 플랫폼 정책 위반으로 계정 정지 위험이 있습니다. **발굴·점수화까지만
+> 자동화하고 실제 반응은 운영자가 직접 합니다.**
 
 ## 보안
 

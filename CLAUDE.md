@@ -29,6 +29,7 @@ Instagram · Threads **개인 브랜드 콘텐츠 운영 자동화 시스템**.
 | `src/branding/web/` | FastAPI 운영 대시보드 + 단일 페이지 UI |
 | `src/branding/render/` | 캐러셀 텍스트 카드 — `card.py`(HTML 생성, 순수함수) `png.py`(크로미엄) `service.py` |
 | `src/branding/upload/` | 렌더 PNG → 공개 URL — `directory.py`(정적서버) `s3.py`(S3호환) `service.py` |
+| `src/branding/discovery/` | 타깃 발굴 — `scoring.py`(우선순위, 순수계산) `service.py`(해시태그·business_discovery) |
 | `src/branding/security/` | 자격증명 저장 암호화 (Fernet, 평문 하위호환) |
 | `src/branding/diagnostics.py` | 연결 진단 (키·토큰·ID 검증, 자동 수정) |
 | `docs/` | `USAGE`(실행) `GROWTH_ANALYSIS`(BGI 설계) `BUSINESS`(판매전략) `PITCH`(광고·랜딩) `HANDOFF`(진행상황) |
@@ -56,6 +57,7 @@ branding post now <id>
 branding render check / sample / slides <id>   # 캐러셀 텍스트 카드 → PNG
 branding upload check / slides <id> / status <id>   # PNG → 공개 URL (발행 전 필수)
 branding secrets status / migrate    # 자격증명 암호화 상태·전환
+branding target discover / checklist / done <id>   # 타깃 발굴 (실행은 사람이)
 branding engage sync / list / reply <id>
 branding insights sync / breakouts / deconstruct / attribution
 branding serve run              # 스케줄러 데몬
