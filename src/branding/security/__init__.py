@@ -4,9 +4,13 @@ from .crypto import (
     SECRET_KEY_ENV,
     SecretBox,
     SecretsUnavailable,
+    env_key,
     generate_key,
     is_encrypted,
+    read_keyfile,
+    write_keyfile,
 )
+from .rotation import RotationResult, rotate_secrets, rotation_preview
 
 __all__ = [
     "SecretBox",
@@ -16,4 +20,10 @@ __all__ = [
     "ENC_PREFIX",
     "KEYFILE_NAME",
     "SECRET_KEY_ENV",
+    "read_keyfile",
+    "write_keyfile",
+    "env_key",
+    "rotate_secrets",
+    "rotation_preview",
+    "RotationResult",
 ]

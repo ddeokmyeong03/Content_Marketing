@@ -110,6 +110,20 @@ class Post(BaseModel):
         return "\n".join(parts)
 
 
+class PostPublication(BaseModel):
+    """한 게시물이 '어느 플랫폼에 이미 올라갔는가'의 기록.
+
+    `Post.meta_post_id`는 대표 한 건만 담을 수 있어 `platform=both` 를 표현하지 못한다.
+    부분 성공 후 재시도가 중복 발행을 일으키지 않으려면 플랫폼 단위 사실이 필요하다.
+    """
+    post_id: int
+    platform: Platform
+    meta_post_id: Optional[str] = None
+    permalink: Optional[str] = None
+    published_at: datetime = Field(default_factory=now_utc)
+    raw: dict = Field(default_factory=dict)
+
+
 class PostMetric(BaseModel):
     """발행된 게시물의 실제 성과 스냅샷 (Graph API 인사이트)."""
     post_id: int

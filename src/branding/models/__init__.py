@@ -3,7 +3,7 @@ from .enums import (
 )
 from .post import (
     Post, PostContent, ImageBrief, HookVariant, CarouselSlide, PostMetric, AccountMetric,
-    BreakoutPattern, Comment, ContentPlan, ContentPlanTopic, TargetCandidate,
+    BreakoutPattern, Comment, ContentPlan, ContentPlanTopic, TargetCandidate, PostPublication,
 )
 
 __all__ = [
@@ -11,5 +11,5 @@ __all__ = [
     "TargetKind", "TargetStatus",
     "Post", "PostContent", "ImageBrief", "HookVariant", "CarouselSlide", "PostMetric",
     "AccountMetric", "BreakoutPattern", "Comment", "ContentPlan", "ContentPlanTopic",
-    "TargetCandidate",
+    "TargetCandidate", "PostPublication",
 ]

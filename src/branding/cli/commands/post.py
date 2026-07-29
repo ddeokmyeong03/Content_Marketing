@@ -10,6 +10,7 @@ from ...models import Post, Platform, MediaType, ContentPillar, PostStatus
 from ...db import init_db, PostRepository
 from ...ai import generate_caption, generate_optimized_caption
 from ...publisher import PublishService
+from ..ui import plain
 
 app = typer.Typer(help="게시물 생성 및 관리")
 console = Console()
@@ -38,7 +39,7 @@ def generate_post(
     try:
         brand = load_brand_config(settings.brand_config_path)
     except FileNotFoundError as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(f"[red]{plain(e)}[/red]")
         raise typer.Exit(1)
 
     platform_enum = Platform(platform)

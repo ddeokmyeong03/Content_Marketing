@@ -2,9 +2,13 @@ import typer
 from rich.console import Console
 
 from ...config import get_settings
+from ..ui import plain
 
 app = typer.Typer(help="운영 대시보드 (웹 UI)")
 console = Console()
+
+# 대괄호가 rich 마크업으로 먹히지 않도록 출력 시 plain() 을 거친다
+WEB_INSTALL_CMD = "pip install -e '.[web]'"
 
 
 @app.command("run")
@@ -13,13 +17,22 @@ def run_web(
     port: int = typer.Option(8000, "--port", "-p", help="포트"),
 ):
     """운영 대시보드 웹 서버 실행 (FastAPI + UI)."""
-    try:
-        import uvicorn
-        from ...web import create_app
-        from ...web.auth import is_loopback
-    except ImportError:
-        console.print("[red]웹 의존성이 없습니다.[/red] 설치: [bold]pip install -e '.[web]'[/bold]")
-        raise typer.Exit(1)
+    # 웹 의존성만 따로 확인한다. 아래 `...web` import 는 앱 대부분을 끌어오므로,
+    # 하나로 묶으면 엉뚱한 곳의 ImportError 까지 "웹 의존성 없음"으로 잘못 안내한다.
+    for module, package in (("fastapi", "fastapi"), ("uvicorn", "uvicorn")):
+        try:
+            __import__(module)
+        except ImportError:
+            console.print(
+                f"[red]웹 의존성이 없습니다[/red] — {package} 를 찾을 수 없습니다.\n"
+                f"  설치: [bold]{plain(WEB_INSTALL_CMD)}[/bold]"
+            )
+            raise typer.Exit(1)
+
+    import uvicorn
+
+    from ...web import create_app
+    from ...web.auth import is_loopback
 
     settings = get_settings()
     protected = bool((settings.web_auth_password or "").strip())

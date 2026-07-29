@@ -7,6 +7,7 @@ import sqlite3
 from ..models import (
     Post, ContentPlan, ContentPlanTopic, PostStatus, PostContent, PostMetric, AccountMetric,
     BreakoutPattern, Comment, CommentStatus, TargetCandidate, TargetKind, TargetStatus,
+    PostPublication,
 )
 from ..models.enums import Platform as _Platform
 from ..models.enums import Platform, MediaType, ContentPillar
@@ -183,6 +184,59 @@ class PostRepository:
         conn.execute("UPDATE posts SET status=? WHERE id=?", (status.value, post_id))
         conn.commit()
         conn.close()
+
+    # --- 플랫폼별 발행 기록 (중복 발행 방지) ---
+
+    def record_publication(self, publication: PostPublication) -> None:
+        """플랫폼 한 곳의 발행 성공을 즉시 기록한다.
+
+        같은 (post_id, platform)을 다시 기록하면 덮어쓴다 — 재시도 경로에서
+        호출되어도 행이 늘지 않아야 하기 때문.
+        """
+        conn = self._conn()
+        conn.execute(
+            """INSERT INTO post_publications
+               (post_id, platform, meta_post_id, permalink, published_at, response_json)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(post_id, platform) DO UPDATE SET
+                 meta_post_id=excluded.meta_post_id,
+                 permalink=excluded.permalink,
+                 published_at=excluded.published_at,
+                 response_json=excluded.response_json""",
+            (
+                publication.post_id,
+                publication.platform.value,
+                publication.meta_post_id,
+                publication.permalink,
+                publication.published_at.isoformat(),
+                json.dumps(publication.raw) if publication.raw else None,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+    def list_publications(self, post_id: int) -> list[PostPublication]:
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT * FROM post_publications WHERE post_id=? ORDER BY published_at ASC",
+            (post_id,),
+        ).fetchall()
+        conn.close()
+        return [
+            PostPublication(
+                post_id=r["post_id"],
+                platform=Platform(r["platform"]),
+                meta_post_id=r["meta_post_id"],
+                permalink=r["permalink"],
+                published_at=parse_dt(r["published_at"]),
+                raw=json.loads(r["response_json"]) if r["response_json"] else {},
+            )
+            for r in rows
+        ]
+
+    def published_platforms(self, post_id: int) -> set[Platform]:
+        """이미 발행이 확정된 플랫폼 집합 — 재시도가 건너뛸 대상."""
+        return {p.platform for p in self.list_publications(post_id)}
 
     def log_publish_attempt(
         self, post_id: int, success: bool, error_msg: Optional[str] = None, response: Optional[dict] = None

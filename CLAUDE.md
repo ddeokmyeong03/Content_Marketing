@@ -56,7 +56,7 @@ branding queue list / approve <id>
 branding post now <id>
 branding render check / sample / slides <id>   # 캐러셀 텍스트 카드 → PNG
 branding upload check / slides <id> / status <id>   # PNG → 공개 URL (발행 전 필수)
-branding secrets status / migrate    # 자격증명 암호화 상태·전환
+branding secrets status / migrate / rotate   # 자격증명 암호화 상태·전환·키 교체
 branding target discover / checklist / done <id>   # 타깃 발굴 (실행은 사람이)
 branding engage sync / list / reply <id>
 branding insights sync / breakouts / deconstruct / attribution

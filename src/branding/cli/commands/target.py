@@ -9,6 +9,7 @@ from ...db import HashtagQuotaRepository, TargetRepository, init_db
 from ...discovery import DiscoveryService
 from ...models import TargetKind, TargetStatus
 from ...publisher.base import MetaAPIError
+from ..ui import plain
 
 app = typer.Typer(help="타깃 발굴 — 반응할 게시물·계정 찾기 (실행은 사람이)")
 console = Console()
@@ -64,7 +65,7 @@ def discover(
         with console.status("[bold green]타깃을 발굴하고 있습니다...[/bold green]"):
             report = svc.discover(limit_per_hashtag=limit)
     except MetaAPIError as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(f"[red]{plain(e)}[/red]")
         raise typer.Exit(1)
 
     if report.hashtags_queried:

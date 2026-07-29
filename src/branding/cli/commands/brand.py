@@ -5,6 +5,7 @@ from rich.panel import Panel
 from rich import box
 
 from ...config import load_brand_config, get_settings
+from ..ui import plain
 
 app = typer.Typer(help="브랜드 설정 관리")
 console = Console()
@@ -17,7 +18,7 @@ def show_brand():
     try:
         brand = load_brand_config(settings.brand_config_path)
     except FileNotFoundError as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(f"[red]{plain(e)}[/red]")
         raise typer.Exit(1)
 
     console.print(Panel.fit(
