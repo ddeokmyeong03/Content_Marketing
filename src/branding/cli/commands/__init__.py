@@ -1,6 +1,8 @@
-from . import brand, post, queue, plan, serve, token, insights, web, doctor, engage, render
+from . import (
+    brand, post, queue, plan, serve, token, insights, web, doctor, engage, render, upload,
+)
 
 __all__ = [
     "brand", "post", "queue", "plan", "serve", "token", "insights", "web", "doctor",
-    "engage", "render",
+    "engage", "render", "upload",
 ]

@@ -34,6 +34,10 @@ web = [
 render = [
     "playwright>=1.40.0",
 ]
+# S3 호환 오브젝트 스토리지 업로드 (AWS S3 · Cloudflare R2 · B2 · MinIO)
+upload = [
+    "boto3>=1.34.0",
+]
 
 [project.scripts]
 branding = "branding.cli.main:app"

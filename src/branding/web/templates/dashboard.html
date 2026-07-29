@@ -333,6 +333,40 @@ async function saveCfg(){
 }
 window.runAct=runAct; window.saveCfg=saveCfg;
 
+const esc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// 캐러셀은 캡션이 아니라 '카드에 인쇄되는 문구'를 봐야 검토가 된다.
+function slidesHtml(p){
+  const slides=p.slides||[];
+  if(!slides.length) return '';
+  const missing=p.slides_missing_images||[];
+  const warn=missing.length
+    ? `<div class="muted" style="color:#e0a030;margin:6px 0">⚠ 이미지가 없는 슬라이드: ${missing.join(', ')} —
+       발행하려면 render → upload 가 필요합니다.</div>`
+    : `<div class="muted" style="color:#4ea72e;margin:6px 0">✓ 모든 슬라이드 업로드 완료 — 발행 가능</div>`;
+  const cards=slides.map(s=>{
+    const state=s.uploaded?'<span style="color:#4ea72e">업로드됨</span>'
+      :s.rendered?'<span style="color:#e0a030">렌더됨</span>'
+      :'<span style="color:#c0504d">미렌더</span>';
+    const thumb=s.rendered
+      ? `<a href="/api/posts/${p.id}/slides/${s.index}/preview" target="_blank" title="크게 보기">
+           <img src="/api/posts/${p.id}/slides/${s.index}/preview" alt="슬라이드 ${s.index}"
+             style="width:104px;height:130px;object-fit:cover;border-radius:6px;flex:none;background:#111"></a>`
+      : `<div style="width:104px;height:130px;border-radius:6px;flex:none;background:#1a1a1a;
+             display:flex;align-items:center;justify-content:center" class="muted">미렌더</div>`;
+    return `<div style="display:flex;gap:12px;margin:10px 0;align-items:flex-start">
+      ${thumb}
+      <div style="min-width:0">
+        <div class="muted">${s.index}. ${esc(s.role)} · ${state}</div>
+        <div style="font-weight:600;margin:3px 0">${esc(s.headline)}</div>
+        ${s.body?`<div class="muted">${esc(s.body)}</div>`:''}
+        ${(s.emphasis||[]).length?`<div class="muted" style="margin-top:3px">강조: ${s.emphasis.map(esc).join(' · ')}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="muted" style="margin-top:14px">캐러셀 슬라이드 (${slides.length}장)</div>${warn}${cards}`;
+}
+
 async function openPost(id){
   const p=await api('/posts/'+id);
   drawer.innerHTML=`<span class="x" onclick="drawer.classList.remove('open')">×</span>
@@ -343,6 +377,7 @@ async function openPost(id){
     <div class="cap">${(p.caption_ko||'').replace(/</g,'&lt;')}</div>
     ${p.cta?`<div class="muted">CTA</div><div>${p.cta}</div>`:''}
     ${(p.hook_variants||[]).length?`<div class="muted" style="margin-top:10px">훅 후보</div>${p.hook_variants.sort((a,b)=>b.predicted_score-a.predicted_score).map(h=>`<div style="margin:3px 0"><span class="score mid">[${h.predicted_score}]</span> <span class="muted">${h.technique}</span> ${h.text}</div>`).join('')}`:''}
+    ${slidesHtml(p)}
     ${p.engagement_notes?`<div class="muted" style="margin-top:10px">개선 코멘트</div><div>${p.engagement_notes}</div>`:''}
     <div style="margin-top:16px">${['draft','review'].includes(p.status)?
       `<button class="act approve" onclick="act(${p.id},'approve')">승인</button><button class="act reject" onclick="act(${p.id},'reject')">거절</button>`:''}

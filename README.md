@@ -33,6 +33,9 @@ plan generate → (검토/승인) → serve run → Threads/Instagram 자동 발
 | `branding render slides <id>` | 캐러셀 슬라이드를 텍스트 카드 PNG로 렌더링 |
 | `branding render sample` | 샘플 카드 1장 렌더링 (폰트·색상 확인용) |
 | `branding render check` | 렌더링 환경 점검 (브라우저 사용 가능 여부) |
+| `branding upload slides <id>` | 렌더된 카드를 공개 URL로 업로드 (발행 전 필수) |
+| `branding upload status <id>` | 슬라이드별 렌더·업로드 상태 확인 |
+| `branding upload check` | 업로드 설정 점검 |
 | `branding engage sync` | 댓글 수집 + AI 답글 초안 생성 |
 | `branding engage list` / `reply <id>` / `auto` | 답글 검토·발행 |
 | `branding insights sync` | 발행 게시물 + 계정 성과 수집 |
@@ -128,8 +131,40 @@ branding render slides <post_id>   # 게시물의 슬라이드 전체 렌더
 > 설치돼 있어야 합니다(Pretendard, Noto Sans KR, 애플 SD 산돌고딕, 맑은 고딕 등).
 > 브라우저를 직접 설치할 수 없는 환경에서는 `BRANDING_CHROMIUM_PATH`로 실행 파일을 지정하세요.
 
-렌더 결과는 `slide.image_path`(로컬)에 기록됩니다. **발행에는 공개 URL이 필요하므로
-업로드해 `slide.image_url`을 채워야 합니다** — 업로드는 아직 미구현입니다.
+### 업로드 — 공개 URL 확보
+
+Instagram Graph API는 **공개적으로 접근 가능한 이미지 URL**을 요구합니다. 렌더 결과는
+`slide.image_path`(로컬)까지만 채워지므로, 업로드해 `slide.image_url`을 채워야 발행됩니다.
+
+```bash
+branding upload check              # 설정 점검
+branding upload slides <post_id>   # 렌더된 카드 업로드 → image_url 채움
+branding upload status <post_id>   # 슬라이드별 미렌더/렌더됨/업로드됨
+```
+
+호스팅 수단은 운영 환경마다 다르므로 업로더를 교체할 수 있습니다:
+
+| `UPLOAD_PROVIDER` | 용도 | 설정 |
+|---|---|---|
+| `dir` | 이미 정적 웹 서버(nginx·Netlify 등)가 있을 때 | `UPLOAD_DIR`, `UPLOAD_PUBLIC_BASE_URL` |
+| `s3` | AWS S3 · Cloudflare R2 · Backblaze B2 · MinIO | `S3_BUCKET`, `S3_ENDPOINT_URL`(비-AWS), `S3_REGION`, 키 |
+
+`s3`는 `pip install -e '.[upload]'`가 필요합니다.
+
+> ⚠️ **버킷·디렉터리가 인증 없이 열려 있어야** Instagram이 이미지를 가져갈 수 있습니다.
+> Cloudflare R2는 ACL을 지원하지 않으므로 버킷 정책·공개 도메인으로 설정하고,
+> 커스텀 도메인은 `UPLOAD_PUBLIC_BASE_URL`에 지정하세요.
+
+### 전체 흐름 (캐러셀)
+
+```
+plan generate --captions → (슬라이드 문구 생성)
+  → render slides <id>   → PNG (image_path)
+  → upload slides <id>   → 공개 URL (image_url)
+  → queue approve <id>   → post now <id>
+```
+
+대시보드 검토 큐에서 슬라이드 문구·렌더 미리보기·업로드 상태를 함께 확인할 수 있습니다.
 
 ### 발행 실패와 재시도
 

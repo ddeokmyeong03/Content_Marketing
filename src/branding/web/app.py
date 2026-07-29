@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 from ..analysis import BreakoutService
 from ..config import get_settings, load_brand_config, resolve_settings
@@ -117,7 +117,42 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "hashtags": c.hashtags_ko + c.hashtags_en,
             "engagement_notes": c.engagement_notes,
             "permalink": p.permalink,
+            # 캐러셀 검토 — 카드에 실제로 인쇄되는 문구와 렌더·업로드 상태
+            "slides": [
+                {
+                    "index": s.index,
+                    "role": s.role,
+                    "headline": s.headline,
+                    "body": s.body,
+                    "emphasis": s.emphasis,
+                    "rendered": bool(s.image_path),
+                    "uploaded": bool(s.image_url),
+                    "image_url": s.image_url,
+                }
+                for s in c.ordered_slides()
+            ],
+            "slides_missing_images": c.missing_slide_images(),
         }
+
+    @app.get("/api/posts/{post_id}/slides/{index}/preview")
+    def slide_preview(post_id: int, index: int):
+        """렌더된 카드 PNG를 그대로 내려준다 (검토용 미리보기).
+
+        경로는 DB에 저장된 렌더 결과에서만 가져온다 — 사용자 입력을 파일 경로로
+        쓰지 않으므로 임의 파일 접근이 생기지 않는다.
+        """
+        p = posts.get_by_id(post_id)
+        if not p:
+            raise HTTPException(404, "게시물을 찾을 수 없습니다.")
+        slide = next((s for s in p.content.slides if s.index == index), None)
+        if slide is None:
+            raise HTTPException(404, f"슬라이드 {index}를 찾을 수 없습니다.")
+        if not slide.image_path:
+            raise HTTPException(404, "아직 렌더링되지 않았습니다. render slides 를 실행하세요.")
+        path = Path(slide.image_path)
+        if not path.exists():
+            raise HTTPException(404, f"렌더 파일이 없습니다: {path}")
+        return FileResponse(path, media_type="image/png")
 
     def _transition(post_id: int, target: PostStatus, allowed: set[PostStatus]) -> dict:
         p = posts.get_by_id(post_id)

@@ -42,6 +42,19 @@ class Settings(BaseSettings):
     publish_retry_backoff_minutes: int = 5  # 5 → 10 → 20분 (지수)
     publish_retry_max_minutes: int = 360    # 백오프 상한 (6시간)
 
+    # 이미지 업로드 (렌더된 카드 → 공개 URL. Instagram 발행에 필수)
+    upload_provider: str = ""            # "" | dir | s3
+    upload_public_base_url: str = ""     # 공개 URL 접두사 (커스텀 도메인·CDN)
+    upload_prefix: str = "slides"        # 저장소 내 경로 접두사
+    upload_dir: Path = Path("./public")  # dir 제공자: 복사할 디렉터리
+    # S3 호환 (AWS S3 · Cloudflare R2 · Backblaze B2 · MinIO)
+    s3_bucket: str = ""
+    s3_region: str = ""
+    s3_endpoint_url: str = ""            # R2/B2/MinIO 등 비-AWS 엔드포인트
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    s3_acl: str = ""                     # 예: public-read. R2는 미지원이므로 기본은 비움
+
     # Scheduler
     publish_poll_minutes: int = 5        # 발행 대기 큐 폴링 주기
     weekly_plan_cron_day: str = "sun"    # 주간 계획 생성 요일
