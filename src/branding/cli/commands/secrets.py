@@ -9,6 +9,7 @@ from ...security import (
     KEYFILE_NAME, SECRET_KEY_ENV, SecretBox, SecretsUnavailable, env_key, generate_key,
     is_encrypted, read_keyfile, rotate_secrets, rotation_preview, write_keyfile,
 )
+from ..ui import plain
 
 app = typer.Typer(help="자격증명 암호화 관리")
 console = Console()
@@ -38,7 +39,7 @@ def status():
     try:
         box_ = SecretBox.for_db_path(settings.db_path)
     except SecretsUnavailable as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(f"[red]{plain(e)}[/red]")
         raise typer.Exit(1)
 
     source = (
@@ -86,7 +87,7 @@ def migrate():
         changed_settings = SettingsStore(settings.db_path).reencrypt_all()
         changed_tokens = TokenRepository(settings.db_path).reencrypt_all()
     except SecretsUnavailable as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(f"[red]{plain(e)}[/red]")
         raise typer.Exit(1)
 
     total = len(changed_settings) + len(changed_tokens)
@@ -137,7 +138,7 @@ def rotate(
         new_plain = new_key.strip() or generate_key()
         new_box = SecretBox(new_plain)
     except SecretsUnavailable as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(f"[red]{plain(e)}[/red]")
         raise typer.Exit(1)
 
     if new_plain == old:
@@ -156,7 +157,7 @@ def rotate(
     try:
         result = rotate_secrets(settings.db_path, old_box, new_box)
     except SecretsUnavailable as e:
-        console.print(f"[red]로테이션 실패 — 되돌렸습니다.[/red]\n{e}")
+        console.print(f"[red]로테이션 실패 — 되돌렸습니다.[/red]\n{plain(e)}")
         console.print(
             "[dim]옛 키가 맞는지 확인하세요. 저장된 값은 그대로입니다.[/dim]"
         )

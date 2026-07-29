@@ -6,6 +6,7 @@ from rich.table import Table
 from ...config import get_settings
 from ...db import PostRepository, init_db
 from ...upload import UploadError, UploadService, get_uploader
+from ..ui import plain
 
 app = typer.Typer(help="렌더된 카드를 공개 URL로 업로드 (Instagram 발행에 필요)")
 console = Console()
@@ -24,7 +25,7 @@ def upload_slides(
         with console.status("[bold green]업로드하고 있습니다...[/bold green]"):
             results = UploadService(settings, uploader).upload_by_id(post_id, force=force)
     except (UploadError, ValueError) as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(f"[red]{plain(e)}[/red]")
         raise typer.Exit(1)
 
     table = Table(title=f"업로드 완료 — {len(results)}장", box=box.ROUNDED)
@@ -45,7 +46,7 @@ def check_upload():
         uploader = get_uploader(settings)
         uploader.check()
     except UploadError as e:
-        console.print(f"[red]✗ {e}[/red]")
+        console.print(f"[red]✗ {plain(e)}[/red]")
         raise typer.Exit(1)
     console.print(f"[green]✓ 업로드 제공자 준비됨:[/green] {uploader.name}")
     console.print(f"[dim]경로 접두사: {settings.upload_prefix or '(없음)'}[/dim]")

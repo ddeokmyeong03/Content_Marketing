@@ -9,9 +9,13 @@ from ...config import get_settings, load_brand_config
 from ...db import PostRepository, init_db
 from ...models import CarouselSlide
 from ...render import RenderUnavailable, SlideRenderer, build_card_html, is_available
+from ..ui import plain
 
 app = typer.Typer(help="캐러셀 텍스트 카드 렌더링 (HTML → PNG)")
 console = Console()
+
+# 대괄호가 rich 마크업으로 먹히지 않도록 출력 시 plain() 을 거친다
+RENDER_INSTALL_CMD = "pip install -e '.[render]' && playwright install chromium"
 
 
 def _report(rendered) -> None:
@@ -43,10 +47,10 @@ def render_slides(
         with console.status("[bold green]카드를 렌더링하고 있습니다...[/bold green]"):
             rendered = renderer.render_by_id(post_id)
     except RenderUnavailable as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(f"[red]{plain(e)}[/red]")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(f"[red]{plain(e)}[/red]")
         raise typer.Exit(1)
 
     _report(rendered)
@@ -86,7 +90,7 @@ def render_sample(
             html, out, width=brand.carousel.width, height=brand.carousel.height
         )
     except RenderUnavailable as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(f"[red]{plain(e)}[/red]")
         raise typer.Exit(1)
 
     console.print(f"[green]✓ 샘플 카드 저장:[/green] {path}")
@@ -103,7 +107,7 @@ def check_environment():
         console.print("[green]✓ playwright 사용 가능[/green]")
     else:
         console.print("[red]✗ playwright 미설치[/red]")
-        console.print("  [bold]pip install -e '.[render]' && playwright install chromium[/bold]")
+        console.print(f"  [bold]{plain(RENDER_INSTALL_CMD)}[/bold]")
         raise typer.Exit(1)
     console.print(f"[dim]캔버스: {brand.carousel.width}×{brand.carousel.height}[/dim]")
     console.print(f"[dim]폰트 스택: {brand.carousel.font_family_css}[/dim]")

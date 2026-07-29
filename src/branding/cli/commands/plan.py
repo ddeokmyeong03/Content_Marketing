@@ -9,6 +9,7 @@ from rich import box
 from ...config import load_brand_config, get_settings
 from ...db import init_db, PlanRepository
 from ...services import generate_week
+from ..ui import plain
 
 app = typer.Typer(help="주간 콘텐츠 계획 관리")
 console = Console()
@@ -32,7 +33,7 @@ def generate_plan(
     try:
         brand = load_brand_config(settings.brand_config_path)
     except FileNotFoundError as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(f"[red]{plain(e)}[/red]")
         raise typer.Exit(1)
 
     start_date = None
